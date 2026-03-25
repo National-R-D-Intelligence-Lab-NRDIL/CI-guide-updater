@@ -31,6 +31,7 @@ import argparse
 import json
 import os
 import re
+from pathlib import Path
 
 import mammoth
 from docx import Document
@@ -232,10 +233,11 @@ def run_pipeline(
 
     # -- 2. Scrape & diff -----------------------------------------------------
     print("[2/4] Checking sources for updates ...")
-    all_diffs: list[tuple[str, str]] = []
+    all_diffs: list[tuple[str, list[str], str]] = []
 
     for src in sources:
         name, url = src["name"], src["url"]
+        sections = src.get("sections", [])
         old_text = _read_snapshot(name)
 
         try:
@@ -247,7 +249,7 @@ def run_pipeline(
         if changed:
             new_text = _read_snapshot(name)
             diff = differ.extract_changes(old_text, new_text)
-            all_diffs.append((name, diff))
+            all_diffs.append((name, sections, diff))
             print(f"       ✓  {name}: changes detected")
         else:
             print(f"       ·  {name}: no changes")
@@ -258,9 +260,17 @@ def run_pipeline(
 
     # -- 3. Update via LLM ----------------------------------------------------
     print(f"[3/4] Sending {len(all_diffs)} diff(s) to LLM ({model_name}) ...")
-    combined_diff = "\n\n".join(
-        f"## Source: {name}\n\n{diff}" for name, diff in all_diffs
-    )
+
+    diff_blocks: list[str] = []
+    for name, sections, diff in all_diffs:
+        header = f"## Source: {name}"
+        if sections:
+            header += (
+                "\nRelevant guide sections: "
+                + ", ".join(f'"{s}"' for s in sections)
+            )
+        diff_blocks.append(f"{header}\n\n{diff}")
+    combined_diff = "\n\n".join(diff_blocks)
 
     try:
         updated_md = updater.update_guide(guide_md, combined_diff, model_name)
@@ -287,7 +297,7 @@ def run_pipeline(
         print(f"       ⚠  .docx export failed ({exc}); markdown saved OK")
 
     print(f"\n[result] Guide updated with changes from: "
-          f"{', '.join(n for n, _ in all_diffs)}")
+          f"{', '.join(n for n, _, _ in all_diffs)}")
     return True
 
 
@@ -297,7 +307,7 @@ def run_pipeline(
 
 def main() -> None:
     """Entry point when invoked from the command line."""
-    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parent / ".env")
 
     parser = argparse.ArgumentParser(
         description="Sponsor Guide update pipeline — scrape → diff → LLM update",
