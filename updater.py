@@ -9,8 +9,13 @@ Configured for Google Gemini via its OpenAI-compatible endpoint.  Set
 """
 
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from openai import APIConnectionError, APIStatusError, OpenAI
+
+_PROJECT_ROOT = Path(__file__).resolve().parent
+load_dotenv(_PROJECT_ROOT / ".env")
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 DEFAULT_MODEL = "gemini-2.0-flash"
@@ -71,8 +76,8 @@ def update_guide(
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise EnvironmentError(
-            "GEMINI_API_KEY environment variable is not set. "
-            "Please export it before running the updater."
+            "GEMINI_API_KEY is not set. Add it to .env in the project root "
+            f"({_PROJECT_ROOT / '.env'}) as GEMINI_API_KEY=... or export it in your shell."
         )
 
     client = OpenAI(
@@ -131,10 +136,6 @@ Up to **$300,000** in direct costs over the entire project period.
     print("LLM UPDATER — Demo")
     print("=" * 60)
     print()
-
-    from dotenv import load_dotenv
-
-    load_dotenv()
 
     try:
         updated = update_guide(sample_guide, sample_diff)

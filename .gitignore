@@ -13,6 +13,10 @@ state.json
 data/
 output/
 
+# Guide documents (working files, not source code)
+*.docx
+*.doc
+
 # OS junk
 .DS_Store
 Thumbs.db
