@@ -84,7 +84,7 @@ Use this whenever you want to start tracking a new funding program (e.g. NIH R01
 ### Step 1 — Run the bootstrap command
 
 ```bash
-python3 bootstrap.py "NIH R01 award"
+python3 bootstrap.py "NSF CAREER award"
 ```
 
 The tool will:
@@ -93,26 +93,28 @@ The tool will:
 3. Scrape the valid pages and draft a Sponsor Guide
 4. Walk you through an interactive review (see [Human Review](#human-review-interactive))
 
-When finished, it creates a program folder:
+Everything is saved into a single program folder under `programs/`:
 
 ```
-programs/nih_r01_award/
-├── sources.json          ← approved source links
-├── guide.md              ← baseline Sponsor Guide
-└── review/
+programs/nsf_career_award/
+├── sources.json                ← approved source links
+├── guide.md                    ← baseline Sponsor Guide
+└── review/                     ← (git-ignored) review artifacts
     ├── sources_pending.json
     └── draft_guide.md
 ```
 
+The folder name is derived automatically from the program name you provide (lowercased, spaces/special characters become underscores).
+
 ### Step 2 — Review the draft guide
 
-Open `programs/nih_r01_award/guide.md` in any text editor and make corrections if needed. This becomes your baseline.
+Open `programs/<slug>/guide.md` in any text editor and make corrections if needed. This becomes your baseline.
 
 ### Step 3 — Run the first weekly update
 
 ```bash
-python3 pipeline.py programs/nih_r01_award/guide.md \
-    --sources programs/nih_r01_award/sources.json
+python3 pipeline.py programs/nsf_career_award/guide.md \
+    --sources programs/nsf_career_award/sources.json
 ```
 
 From now on, re-run this command at any time (or schedule it weekly) to keep the guide current.
@@ -124,8 +126,8 @@ From now on, re-run this command at any time (or schedule it weekly) to keep the
 This is the core command you will use regularly:
 
 ```bash
-python3 pipeline.py programs/<program>/guide.md \
-    --sources programs/<program>/sources.json
+python3 pipeline.py programs/<slug>/guide.md \
+    --sources programs/<slug>/sources.json
 ```
 
 **Examples:**
@@ -151,6 +153,8 @@ python3 pipeline.py programs/nih_r15/NIH_R15_Sponsor_Guide_0325.docx \
 | 5 | Save the result to `output/sponsor_guide_updated.md` and `.docx` |
 
 If no changes are found, the tool prints "All sources unchanged" and exits — nothing is overwritten.
+
+Runtime files (`state.json`, `data/`) are stored inside the program folder and are git-ignored.
 
 ---
 
@@ -234,24 +238,30 @@ CI-sponsor-guide-updater/
 ├── requirements.txt     ← Python dependencies
 ├── .env.example         ← Template for API key
 ├── .env                 ← Your actual API key (git-ignored)
-├── sources.json         ← Root-level template/example
-└── programs/
+└── programs/            ← One folder per grant program
     ├── nih_r15/
     │   ├── sources.json
-    │   └── NIH_R15_Sponsor_Guide_0325.docx   (git-ignored)
+    │   ├── guide.md or *.docx     (baseline guide)
+    │   ├── state.json             (git-ignored, runtime)
+    │   └── data/                  (git-ignored, runtime)
     └── nsf_career/
         ├── sources.json
         ├── guide.md
-        └── review/
+        ├── state.json             (git-ignored, runtime)
+        ├── data/                  (git-ignored, runtime)
+        └── review/                (git-ignored, review artifacts)
             ├── sources_pending.json
             └── draft_guide.md
 ```
 
+Every program's files live together in one folder. Nothing is written to the project root.
+
 **Git-ignored files** (not uploaded to the repository):
-- `.env` (contains your API key)
-- `state.json` and `data/` folders (runtime snapshots)
-- `output/` (generated guides)
-- `*.docx` and `*.doc` files
+- `.env` — API key
+- `programs/**/state.json` and `programs/**/data/` — runtime snapshots
+- `programs/**/review/` — review artifacts
+- `output/` — generated guides
+- `*.docx`, `*.doc` — Word files
 
 ---
 
@@ -315,7 +325,7 @@ Each program's `sources.json` is a simple list:
 
 Files that are **not** committed (by `.gitignore`):
 - `.env` — API key
-- `state.json`, `data/` — runtime snapshots
+- `programs/**/state.json`, `programs/**/data/`, `programs/**/review/` — runtime artifacts
 - `output/` — generated guides
 - `*.docx`, `*.doc` — Word files
 

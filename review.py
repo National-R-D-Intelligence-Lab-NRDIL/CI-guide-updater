@@ -26,22 +26,26 @@ REVIEW_DIR = "review"
 def save_for_review(
     sources: list[dict],
     guide_md: str,
-    program: str,
-    review_dir: str = REVIEW_DIR,
+    program_dir: str,
 ) -> tuple[str, str]:
-    """Write pending sources and draft guide to the review folder.
+    """Write pending sources and draft guide into the program's review folder.
+
+    Args:
+        sources: Candidate source list from :mod:`discover`.
+        guide_md: Draft guide markdown from :mod:`generator`.
+        program_dir: Program directory, e.g. ``programs/nsf_career``.
 
     Returns:
         Tuple of (sources_path, guide_path).
     """
+    review_dir = os.path.join(program_dir, "review")
     os.makedirs(review_dir, exist_ok=True)
-    safe = program.replace(" ", "_")
 
-    src_path = os.path.join(review_dir, f"{safe}_sources_pending.json")
+    src_path = os.path.join(review_dir, "sources_pending.json")
     with open(src_path, "w", encoding="utf-8") as f:
         json.dump(sources, f, indent=2)
 
-    guide_path = os.path.join(review_dir, f"{safe}_draft_guide.md")
+    guide_path = os.path.join(review_dir, "draft_guide.md")
     with open(guide_path, "w", encoding="utf-8") as f:
         f.write(guide_md)
 
@@ -51,18 +55,25 @@ def save_for_review(
 def finalize(
     approved: list[dict],
     guide_md: str,
-    program: str,
-    guides_dir: str = "guides",
+    program_dir: str,
 ) -> tuple[str, str]:
-    """Save approved sources and guide as production files."""
-    safe = program.replace(" ", "_")
+    """Save approved sources and guide as production files inside the program dir.
 
-    sources_path = f"sources_{safe}.json"
+    Args:
+        approved: Expert-approved source list.
+        guide_md: Draft (or revised) guide markdown.
+        program_dir: Program directory, e.g. ``programs/nsf_career``.
+
+    Returns:
+        Tuple of (sources_json_path, guide_path).
+    """
+    os.makedirs(program_dir, exist_ok=True)
+
+    sources_path = os.path.join(program_dir, "sources.json")
     with open(sources_path, "w", encoding="utf-8") as f:
         json.dump(approved, f, indent=2)
 
-    os.makedirs(guides_dir, exist_ok=True)
-    guide_path = os.path.join(guides_dir, f"{safe}_guide.md")
+    guide_path = os.path.join(program_dir, "guide.md")
     with open(guide_path, "w", encoding="utf-8") as f:
         f.write(guide_md)
 

@@ -9,11 +9,10 @@ dist/
 build/
 
 # Runtime data (regenerated on each run)
-state.json
-data/
 output/
 programs/**/state.json
 programs/**/data/
+programs/**/review/
 
 # Guide documents (working files, not source code)
 *.docx
