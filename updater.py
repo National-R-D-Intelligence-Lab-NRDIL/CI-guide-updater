@@ -18,7 +18,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(_PROJECT_ROOT / ".env")
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 SYSTEM_PROMPT = (
     "You are an expert Research Development assistant. Your task is to update "
@@ -97,6 +97,71 @@ def update_guide(
     )
 
     return response.choices[0].message.content
+
+
+def classify_sections(
+    page_text: str,
+    guide_md: str,
+    model_name: str = DEFAULT_MODEL,
+) -> list[str]:
+    """Ask the LLM which guide sections a scraped page is relevant to.
+
+    Extracts the heading titles from *guide_md*, sends them alongside a
+    snippet of the page text, and returns the matched section names.
+
+    Args:
+        page_text: Cleaned text from a scraped web page.
+        guide_md: Current guide markdown (headings are extracted automatically).
+        model_name: Gemini model to use.
+
+    Returns:
+        List of section title strings (may be empty).
+    """
+    import re
+
+    headings = re.findall(r"^#{1,3}\s+(.+)$", guide_md, re.MULTILINE)
+    if not headings:
+        return []
+
+    heading_list = "\n".join(f"- {h.strip()}" for h in headings)
+    snippet = page_text[:3000]
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return []
+
+    client = OpenAI(api_key=api_key, base_url=GEMINI_BASE_URL)
+
+    prompt = (
+        "Below is a list of section headings from a Sponsor Guide, "
+        "followed by a snippet of text from a web page.\n\n"
+        "## Guide Sections\n\n"
+        f"{heading_list}\n\n"
+        "## Web Page Snippet\n\n"
+        f"{snippet}\n\n"
+        "Which guide sections does this web page content relate to? "
+        "Return ONLY a JSON array of matching section title strings. "
+        "If none match, return an empty array []."
+    )
+
+    response = client.chat.completions.create(
+        model=model_name,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,
+    )
+
+    import json as _json
+
+    raw = response.choices[0].message.content.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    try:
+        result = _json.loads(raw)
+        if isinstance(result, list):
+            return [s for s in result if isinstance(s, str)]
+    except _json.JSONDecodeError:
+        pass
+    return []
 
 
 if __name__ == "__main__":
