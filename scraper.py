@@ -53,24 +53,30 @@ def generate_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _load_state() -> dict:
+def _load_state(state_file: str) -> dict:
     """Read and return the persisted state dict, or an empty dict."""
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r", encoding="utf-8") as fh:
+    if os.path.exists(state_file):
+        with open(state_file, "r", encoding="utf-8") as fh:
             return json.load(fh)
     return {}
 
 
-def _save_state(state: dict) -> None:
+def _save_state(state: dict, state_file: str) -> None:
     """Atomically write *state* to the state file."""
-    with open(STATE_FILE, "w", encoding="utf-8") as fh:
+    os.makedirs(os.path.dirname(state_file) or ".", exist_ok=True)
+    with open(state_file, "w", encoding="utf-8") as fh:
         json.dump(state, fh, indent=2)
 
 
-def check_for_updates(url: str, name: str) -> bool:
+def check_for_updates(
+    url: str,
+    name: str,
+    state_file: str = STATE_FILE,
+    data_dir: str = DATA_DIR,
+) -> bool:
     """Scrape *url*, compare against the last-known hash, and persist changes.
 
-    The function stores per-entry metadata in ``state.json``::
+    The function stores per-entry metadata in a state file::
 
         {
           "<name>": {
@@ -81,11 +87,13 @@ def check_for_updates(url: str, name: str) -> bool:
         }
 
     When a change (or a brand-new entry) is detected the full scraped text is
-    saved to ``data/<name>_latest.txt`` and the state file is updated.
+    saved to ``<data_dir>/<name>_latest.txt`` and the state file is updated.
 
     Args:
         url:  Target page URL.
         name: Short identifier for this source (e.g. ``"NIH_R15"``).
+        state_file: Path to the JSON state file.
+        data_dir: Directory where latest snapshots are written.
 
     Returns:
         ``True`` if the content changed (or is new), ``False`` otherwise.
@@ -94,17 +102,17 @@ def check_for_updates(url: str, name: str) -> bool:
     new_hash = generate_hash(text)
     now = datetime.now(timezone.utc).isoformat()
 
-    state = _load_state()
+    state = _load_state(state_file)
     entry = state.get(name)
 
     if entry and entry.get("hash") == new_hash:
         print(f"[{now}] {name}: no changes detected.")
         state[name]["last_checked"] = now
-        _save_state(state)
+        _save_state(state, state_file)
         return False
 
-    os.makedirs(DATA_DIR, exist_ok=True)
-    data_path = os.path.join(DATA_DIR, f"{name}_latest.txt")
+    os.makedirs(data_dir, exist_ok=True)
+    data_path = os.path.join(data_dir, f"{name}_latest.txt")
     with open(data_path, "w", encoding="utf-8") as fh:
         fh.write(text)
 
@@ -114,7 +122,7 @@ def check_for_updates(url: str, name: str) -> bool:
         "hash": new_hash,
         "last_checked": now,
     }
-    _save_state(state)
+    _save_state(state, state_file)
     print(f"[{now}] {name}: {label} — saved to {data_path}")
     return True
 

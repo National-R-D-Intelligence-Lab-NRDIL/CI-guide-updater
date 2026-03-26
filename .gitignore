@@ -12,6 +12,8 @@ build/
 state.json
 data/
 output/
+programs/**/state.json
+programs/**/data/
 
 # Guide documents (working files, not source code)
 *.docx

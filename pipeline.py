@@ -32,6 +32,7 @@ import json
 import os
 import re
 from pathlib import Path
+from typing import Optional
 
 import mammoth
 from docx import Document
@@ -41,8 +42,6 @@ from dotenv import load_dotenv
 import differ
 import scraper
 import updater
-
-DATA_DIR = scraper.DATA_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -195,9 +194,9 @@ def _add_inline_formatting(paragraph, text: str) -> None:
 # Snapshot reader
 # ---------------------------------------------------------------------------
 
-def _read_snapshot(name: str) -> str:
+def _read_snapshot(name: str, data_dir: str) -> str:
     """Return the previously saved text snapshot, or ``""`` on first run."""
-    path = os.path.join(DATA_DIR, f"{name}_latest.txt")
+    path = os.path.join(data_dir, f"{name}_latest.txt")
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as fh:
             return fh.read()
@@ -213,6 +212,8 @@ def run_pipeline(
     guide_path: str,
     output_dir: str = "output",
     model_name: str = updater.DEFAULT_MODEL,
+    state_file: Optional[str] = None,
+    data_dir: Optional[str] = None,
 ) -> bool:
     """Execute the full scrape → diff → update pipeline.
 
@@ -226,10 +227,18 @@ def run_pipeline(
         ``True`` if the guide was updated, ``False`` if no changes were found.
     """
     # -- 1. Load inputs -------------------------------------------------------
+    sources_root = os.path.dirname(os.path.abspath(sources_config)) or "."
+    if state_file is None:
+        state_file = os.path.join(sources_root, "state.json")
+    if data_dir is None:
+        data_dir = os.path.join(sources_root, "data")
+
     print("[1/4] Loading sources and guide ...")
     sources = load_sources(sources_config)
     guide_md = read_guide(guide_path)
     print(f"       {len(sources)} source(s)  •  guide loaded from {guide_path}")
+    print(f"       state → {state_file}")
+    print(f"       data  → {data_dir}")
 
     # -- 2. Scrape & diff -----------------------------------------------------
     print("[2/4] Checking sources for updates ...")
@@ -238,17 +247,31 @@ def run_pipeline(
     for src in sources:
         name, url = src["name"], src["url"]
         sections = src.get("sections", [])
-        old_text = _read_snapshot(name)
+        old_text = _read_snapshot(name, data_dir)
 
         try:
-            changed = scraper.check_for_updates(url, name)
+            changed = scraper.check_for_updates(
+                url,
+                name,
+                state_file=state_file,
+                data_dir=data_dir,
+            )
         except Exception as exc:
             print(f"       ⚠  {name}: scrape failed — {exc}")
             continue
 
         if changed:
-            new_text = _read_snapshot(name)
+            new_text = _read_snapshot(name, data_dir)
             diff = differ.extract_changes(old_text, new_text)
+
+            if not sections:
+                try:
+                    sections = updater.classify_sections(new_text, guide_md)
+                    if sections:
+                        print(f"       ℹ  {name}: auto-detected sections → {', '.join(sections)}")
+                except Exception:
+                    pass
+
             all_diffs.append((name, sections, diff))
             print(f"       ✓  {name}: changes detected")
         else:
@@ -327,13 +350,30 @@ def main() -> None:
         help="Output directory for the updated guide (default: output/)",
     )
     parser.add_argument(
+        "--state",
+        default=None,
+        help="Path to state.json (default: <sources_dir>/state.json)",
+    )
+    parser.add_argument(
+        "--data-dir",
+        default=None,
+        help="Directory for text snapshots (default: <sources_dir>/data/)",
+    )
+    parser.add_argument(
         "--model",
         default=updater.DEFAULT_MODEL,
         help=f"LLM model name (default: {updater.DEFAULT_MODEL})",
     )
     args = parser.parse_args()
 
-    run_pipeline(args.sources, args.guide, args.output, args.model)
+    run_pipeline(
+        args.sources,
+        args.guide,
+        args.output,
+        args.model,
+        state_file=args.state,
+        data_dir=args.data_dir,
+    )
 
 
 if __name__ == "__main__":

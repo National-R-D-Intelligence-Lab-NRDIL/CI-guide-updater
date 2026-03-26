@@ -1,164 +1,329 @@
 # CI Sponsor Guide Updater
 
-Automated Python workflow that monitors approved government grant pages, detects meaningful policy changes, and updates a Sponsor Guide with **Google Gemini**.
+Automated Python tool that monitors government grant websites, detects policy changes, and keeps your Sponsor Guides up to date using **Google Gemini**.
 
-Built for research development teams that need current deadlines, eligibility rules, and submission requirements without manually re-reading every source page.
+Built for research development teams — no coding experience required to run the day-to-day workflow.
 
-## What This Project Does
+---
 
-- **Monitors approved sources** from `sources.json` (e.g. NIH, NSF HTML pages).
-- **Tracks content over time** with hash-based snapshots under `data/`.
-- **Extracts focused diffs** (added/removed lines) to reduce noise.
-- **Updates the guide via Gemini** while preserving markdown structure.
-- **Writes outputs** as `output/sponsor_guide_updated.md` and `.docx`.
+## Table of Contents
 
-## Architecture
+1. [How It Works](#how-it-works)
+2. [Quick Start](#quick-start)
+3. [Onboard a New Grant Program](#onboard-a-new-grant-program)
+4. [Run the Weekly Update](#run-the-weekly-update)
+5. [Human Review (Interactive)](#human-review-interactive)
+6. [Adding a New Link During Review](#adding-a-new-link-during-review)
+7. [Project Layout](#project-layout)
+8. [Sources Format](#sources-format)
+9. [Modules Reference](#modules-reference)
+10. [Troubleshooting](#troubleshooting)
+11. [Git / GitHub Notes](#git--github-notes)
 
-1. **`scraper.py`** — Fetch URLs, strip scripts/styles, hash text, persist `state.json` and `data/<name>_latest.txt`.
-2. **`differ.py`** — Compare old vs new snapshot; emit LLM-friendly deltas.
-3. **`updater.py`** — Call Gemini (OpenAI-compatible API) with the current guide + combined diff.
-4. **`pipeline.py`** — Orchestrates scrape → diff → update; optional `sections` per source target guide headings for the LLM.
+---
 
-## Project layout
+## How It Works
 
-```text
-CI-sponsor-guide-updater/
-├── pipeline.py
-├── scraper.py
-├── differ.py
-├── updater.py
-├── sources.json
-├── guides/
-│   └── sample_guide.md
-├── requirements.txt
-├── .env.example
-├── .gitignore
-└── README.md
+```
+┌──────────────────────────────────────────────────────────────┐
+│                  One-time setup (per program)                │
+│                                                              │
+│  1. DISCOVER  — Gemini searches the web for official pages   │
+│  2. GENERATE  — Scrape those pages → draft a Sponsor Guide   │
+│  3. REVIEW    — Human expert approves/edits/adds sources     │
+└──────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────┐
+│              Weekly update (automated / scheduled)            │
+│                                                              │
+│  4. SCRAPE    — Re-fetch every approved source page          │
+│  5. DIFF      — Compare against the last snapshot            │
+│  6. UPDATE    — Gemini rewrites only the changed sections    │
+│  7. OUTPUT    — Save updated guide as .md and .docx          │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-**Git-ignored (not uploaded):** `.env`, `state.json`, `data/`, `output/`, and `*.docx` / `*.doc` (local guides).
+**Key feature:** You never need to manually specify which guide sections a link relates to. Gemini reads the page content and the guide headings, then figures out the mapping automatically.
 
-## Quick start
+---
 
-### 1) Install dependencies
+## Quick Start
+
+### 1. Install Python dependencies
 
 ```bash
-cd CI-sponsor-guide-updater
 pip3 install -r requirements.txt
 ```
 
-On macOS, use `python3` and `pip3` (there is often no `python` command unless you use a venv or install Python from python.org).
+> **macOS note:** Use `python3` / `pip3`. There is usually no bare `python` command unless you are inside a virtual environment.
 
-### 2) Gemini API key
+### 2. Set up your Gemini API key
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` in the **project root** (same directory as `pipeline.py`):
+Open `.env` and paste your key:
 
-```env
-GEMINI_API_KEY=your-gemini-api-key
+```
+GEMINI_API_KEY=your-gemini-api-key-here
 ```
 
-The app loads `.env` from that folder even if you run commands from another directory.
+You can get a free API key at [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 
-Defaults in code:
+### 3. You're ready!
 
-- Base URL: `https://generativelanguage.googleapis.com/v1beta/openai/`
-- Model: `gemini-2.0-flash` (override with `--model`)
+Continue to the next section to onboard your first grant program.
 
-### 3) Configure sources
+---
 
-Each entry in `sources.json` supports:
+## Onboard a New Grant Program
 
-| Field | Meaning |
-| --- | --- |
-| `name` | Short ID; snapshots go to `data/<name>_latest.txt`. |
-| `url` | HTML page to scrape (PDFs are not scraped yet). |
-| `sections` | Optional list of guide section titles; included in the diff so Gemini knows where to edit. |
+Use this whenever you want to start tracking a new funding program (e.g. NIH R01, NSF CAREER, NIH R15).
 
-Example:
+### Step 1 — Run the bootstrap command
+
+```bash
+python3 bootstrap.py "NIH R01 award"
+```
+
+The tool will:
+1. Search the web for official program pages
+2. Validate every URL it finds
+3. Scrape the valid pages and draft a Sponsor Guide
+4. Walk you through an interactive review (see [Human Review](#human-review-interactive))
+
+When finished, it creates a program folder:
+
+```
+programs/nih_r01_award/
+├── sources.json          ← approved source links
+├── guide.md              ← baseline Sponsor Guide
+└── review/
+    ├── sources_pending.json
+    └── draft_guide.md
+```
+
+### Step 2 — Review the draft guide
+
+Open `programs/nih_r01_award/guide.md` in any text editor and make corrections if needed. This becomes your baseline.
+
+### Step 3 — Run the first weekly update
+
+```bash
+python3 pipeline.py programs/nih_r01_award/guide.md \
+    --sources programs/nih_r01_award/sources.json
+```
+
+From now on, re-run this command at any time (or schedule it weekly) to keep the guide current.
+
+---
+
+## Run the Weekly Update
+
+This is the core command you will use regularly:
+
+```bash
+python3 pipeline.py programs/<program>/guide.md \
+    --sources programs/<program>/sources.json
+```
+
+**Examples:**
+
+```bash
+# NSF CAREER
+python3 pipeline.py programs/nsf_career/guide.md \
+    --sources programs/nsf_career/sources.json
+
+# NIH R15 (guide is a .docx file)
+python3 pipeline.py programs/nih_r15/NIH_R15_Sponsor_Guide_0325.docx \
+    --sources programs/nih_r15/sources.json
+```
+
+**What happens:**
+
+| Step | What the tool does |
+|------|--------------------|
+| 1 | Re-scrape every URL in `sources.json` |
+| 2 | Compare each page against its last snapshot |
+| 3 | If anything changed, send the diff to Gemini |
+| 4 | Gemini rewrites only the affected sections |
+| 5 | Save the result to `output/sponsor_guide_updated.md` and `.docx` |
+
+If no changes are found, the tool prints "All sources unchanged" and exits — nothing is overwritten.
+
+---
+
+## Human Review (Interactive)
+
+During bootstrap, the tool presents each discovered source one at a time with a numbered menu:
+
+```
+  [1/5]  NSF_CAREER_award_CAREER_Program_Overview
+           URL:      https://www.nsf.gov/funding/...
+           Sections: 2. Program Overview, 3. Key Dates
+
+    1  Approve this source
+    2  Reject this source
+    3  Edit the URL for this source
+    4  Add a new link (not in the list)
+    5  Show approved sources so far
+    6  Done — finish review
+
+  Your choice (1-6):
+```
+
+Just type a number and press Enter. No coding or JSON editing required.
+
+| Choice | What it does |
+|--------|-------------|
+| **1** | Keep this source as-is |
+| **2** | Remove this source from the list |
+| **3** | Replace the URL (the tool re-validates and re-detects sections automatically) |
+| **4** | Add a brand-new link you found yourself (see below) |
+| **5** | Print a summary of everything you've approved so far |
+| **6** | Stop reviewing early and keep what you've approved |
+
+After all sources are reviewed, you get one more prompt:
+
+```
+  Add another link before finishing? (y/n):
+```
+
+---
+
+## Adding a New Link During Review
+
+Choose option **4** at any time during the review. The tool will ask:
+
+```
+  Paste the URL: https://grants.nih.gov/grants/guide/notice-files/NOT-OD-25-001.html
+  Checking URL ...
+  ✓ Reachable
+  Short label (e.g. 'Program FAQ'): Budget Policy Update
+  Detecting relevant guide sections ...
+  Auto-detected sections: 7. Budget, 8. Allowable Costs
+  ✓ Added: NIH_R01_Budget_Policy_Update
+```
+
+**What happens behind the scenes:**
+
+1. The tool checks the URL is reachable
+2. You give it a short label (just a few words — used for filenames)
+3. The tool scrapes the page and asks Gemini which guide sections it relates to
+4. The new link is added to the review queue
+
+You **do not** need to know the guide section names or edit any JSON files. Gemini figures out the section mapping automatically.
+
+> **Tip:** If Gemini can't detect sections (e.g. the page is sparse), that's fine. The weekly pipeline will re-attempt auto-detection when it runs.
+
+---
+
+## Project Layout
+
+```
+CI-sponsor-guide-updater/
+├── bootstrap.py         ← Onboard a new program (discover → generate → review)
+├── pipeline.py          ← Weekly update runner (scrape → diff → update)
+├── scraper.py           ← Fetch + clean web pages, manage snapshots
+├── differ.py            ← Extract meaningful text changes
+├── updater.py           ← LLM-powered guide rewriting + section classification
+├── discover.py          ← Find candidate source URLs via Gemini + Google Search
+├── generator.py         ← Generate a first-draft guide from scraped sources
+├── review.py            ← Interactive human review CLI
+├── requirements.txt     ← Python dependencies
+├── .env.example         ← Template for API key
+├── .env                 ← Your actual API key (git-ignored)
+├── sources.json         ← Root-level template/example
+└── programs/
+    ├── nih_r15/
+    │   ├── sources.json
+    │   └── NIH_R15_Sponsor_Guide_0325.docx   (git-ignored)
+    └── nsf_career/
+        ├── sources.json
+        ├── guide.md
+        └── review/
+            ├── sources_pending.json
+            └── draft_guide.md
+```
+
+**Git-ignored files** (not uploaded to the repository):
+- `.env` (contains your API key)
+- `state.json` and `data/` folders (runtime snapshots)
+- `output/` (generated guides)
+- `*.docx` and `*.doc` files
+
+---
+
+## Sources Format
+
+Each program's `sources.json` is a simple list:
 
 ```json
 [
   {
-    "name": "NIH_R15_Main",
-    "url": "https://grants.nih.gov/funding/activity-codes/R15",
-    "sections": ["The R15 Programs", "R15 Resources"]
+    "name": "NIH_R15_Main_Page",
+    "url": "https://grants.nih.gov/grants/funding/r15.htm",
+    "sections": ["2. Program Overview", "4. Eligibility"]
+  },
+  {
+    "name": "NIH_R15_Due_Dates",
+    "url": "https://grants.nih.gov/grants/how-to-apply-application-guide/due-dates.htm",
+    "sections": []
   }
 ]
 ```
 
-The repository includes a fuller NIH R15–oriented `sources.json`; customize for your program.
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Unique ID used for snapshot filenames |
+| `url` | Yes | The web page to scrape (HTML only, no PDFs) |
+| `sections` | No | Guide sections this source maps to. **Leave empty** — Gemini detects them automatically |
 
-## Run the pipeline
+---
 
-```bash
-python3 pipeline.py guides/sample_guide.md
-```
+## Modules Reference
 
-Word guide:
+| Module | Purpose |
+|--------|---------|
+| `scraper.py` | Fetch web pages, strip HTML, generate content hashes, manage `state.json` snapshots |
+| `differ.py` | Compare old vs new text and produce a structured summary of additions/removals |
+| `updater.py` | Send guide + diff to Gemini, get back the updated guide. Also provides `classify_sections()` for auto-detecting which guide sections a page relates to |
+| `pipeline.py` | Orchestrate the weekly workflow: load sources → scrape → diff → LLM update → save output |
+| `discover.py` | Use Gemini + Google Search grounding to find candidate source URLs for a program |
+| `generator.py` | Scrape discovered pages and ask Gemini to draft a first Sponsor Guide |
+| `review.py` | Menu-driven CLI for human experts to approve, reject, edit, and add source links |
+| `bootstrap.py` | End-to-end orchestrator: discover → validate → generate → review → finalize |
 
-```bash
-python3 pipeline.py "guides/Your Sponsor Guide.docx"
-```
-
-Options:
-
-```bash
-python3 pipeline.py guide.docx \
-  --sources sources.json \
-  --output output \
-  --model gemini-2.0-flash
-```
-
-**Behavior:** If no monitored source changes since the last run, the guide is not rewritten.
-
-## Outputs
-
-When changes are detected:
-
-- `output/sponsor_guide_updated.md`
-- `output/sponsor_guide_updated.docx`
-
-## Run modules alone
-
-```bash
-python3 scraper.py
-python3 differ.py
-python3 updater.py
-```
-
-## Dependencies
-
-See `requirements.txt`. Main pieces: `requests`, `beautifulsoup4`, `openai` (Gemini-compatible client), `mammoth`, `python-docx`, `python-dotenv`.
+---
 
 ## Troubleshooting
 
-| Issue | What to do |
-| --- | --- |
-| `command not found: python` | Use `python3`. |
-| Missing packages | `pip3 install -r requirements.txt` in the project folder. |
-| `GEMINI_API_KEY` missing | Ensure `.env` exists and contains `GEMINI_API_KEY=...` (not an empty file). |
+| Problem | Solution |
+|---------|----------|
+| `zsh: command not found: python` | Use `python3` instead (macOS default) |
+| `GEMINI_API_KEY is not set` | Make sure `.env` exists in the project root and contains `GEMINI_API_KEY=...` |
+| `.env` file exists but key not loaded | Confirm the file is not empty (`cat .env`). Re-copy from `.env.example` if needed |
+| `ModuleNotFoundError` | Run `pip3 install -r requirements.txt` |
+| URL marked "not reachable" during review | The page may be temporarily down or require special access. You can still add it — the pipeline will retry later |
+| Gemini can't detect sections | That's OK. The pipeline will try again on the next weekly run, or you can manually add `sections` to `sources.json` |
+| `404 NOT_FOUND` for model | The default model may have changed. Check `updater.py` for `DEFAULT_MODEL` and update if needed |
 
-## Publish to GitHub
+---
 
-From the project root, after reviewing `git status`:
+## Git / GitHub Notes
+
+Files that are **not** committed (by `.gitignore`):
+- `.env` — API key
+- `state.json`, `data/` — runtime snapshots
+- `output/` — generated guides
+- `*.docx`, `*.doc` — Word files
+
+To publish:
 
 ```bash
+git status          # confirm sensitive files are not listed
 git add -A
-git status   # confirm .env, data/, *.docx are not listed
-git commit -m "Describe your changes (e.g. Gemini pipeline, README, sources)"
+git commit -m "your commit message"
 git push origin main
 ```
-
-Create the repo on GitHub first if needed, then:
-
-```bash
-git remote add origin https://github.com/<your-username>/<your-repo>.git
-git branch -M main
-git push -u origin main
-```
-
-Never commit `.env` or API keys; they stay in `.gitignore`.
