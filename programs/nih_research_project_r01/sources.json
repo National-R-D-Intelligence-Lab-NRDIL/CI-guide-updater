@@ -1,0 +1,68 @@
+[
+  {
+    "name": "NIH_Research_Project_R01_R01_Program_Overview",
+    "url": "https://grants.nih.gov/funding/activity-codes/R01",
+    "sections": [
+      "Program Overview",
+      "Eligibility",
+      "Award Size"
+    ]
+  },
+  {
+    "name": "NIH_Research_Project_R01_Parent_NOFOs_List",
+    "url": "https://grants.nih.gov/funding/explore-nih-opportunities/parent-announcements",
+    "sections": [
+      "Program Overview",
+      "Key Dates",
+      "Eligibility",
+      "Award Size",
+      "Application Requirements"
+    ]
+  },
+  {
+    "name": "NIH_Research_Project_R01_Parent_R01_Clinical_Trial_Not_Allowed",
+    "url": "https://grants.nih.gov/grants/guide/pa-files/PA-25-304.html",
+    "sections": [
+      "Program Overview",
+      "Eligibility",
+      "Award Size",
+      "Application Requirements",
+      "Key Dates",
+      "Review Criteria"
+    ]
+  },
+  {
+    "name": "NIH_Research_Project_R01_Early_Stage_Investigator_Policies",
+    "url": "https://grants.nih.gov/policy-and-compliance/policy-topics/early-stage-investigators",
+    "sections": [
+      "Eligibility",
+      "Tips"
+    ]
+  },
+  {
+    "name": "NIH_Research_Project_R01_NIH_Grants_Policy_Statement",
+    "url": "https://grants.nih.gov/policy-and-compliance/nihgps",
+    "sections": [
+      "Award Size",
+      "Application Requirements",
+      "Resources",
+      "Tips",
+      "Eligibility"
+    ]
+  },
+  {
+    "name": "NIH_Research_Project_R01_Standard_Due_Dates",
+    "url": "https://grants.nih.gov/grants-process/submit/submission-policies/standard-due-dates",
+    "sections": [
+      "Key Dates"
+    ]
+  },
+  {
+    "name": "NIH_Research_Project_R01_NIH_Guide_for_Grants_and_Contracts",
+    "url": "https://grants.nih.gov/grants/guide/index.html",
+    "sections": [
+      "Resources",
+      "Tips"
+    ]
+  }
+]
