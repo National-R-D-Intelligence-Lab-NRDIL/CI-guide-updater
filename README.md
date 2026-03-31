@@ -32,11 +32,11 @@ Built for research development teams — no coding experience required to run th
 │  1. DISCOVER  — Gemini searches the web for official pages   │
 │  2. GENERATE  — Scrape those pages → draft a Sponsor Guide   │
 │  3. REVIEW    — Human expert approves/edits/adds sources     │
-│               (interactive OR async via shared folder)        │
+│               (interactive OR async via shared folder)       │
 └──────────────────────────────────────────────────────────────┘
                             ▼
 ┌──────────────────────────────────────────────────────────────┐
-│              Weekly update (automated / scheduled)            │
+│              Weekly update (automated / scheduled)           │
 │                                                              │
 │  4. SCRAPE    — Re-fetch every approved source page          │
 │  5. DIFF      — Compare against the last snapshot            │
