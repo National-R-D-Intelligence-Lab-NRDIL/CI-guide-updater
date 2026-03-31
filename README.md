@@ -11,14 +11,15 @@ Built for research development teams — no coding experience required to run th
 1. [How It Works](#how-it-works)
 2. [Quick Start](#quick-start)
 3. [Onboard a New Grant Program](#onboard-a-new-grant-program)
-4. [Run the Weekly Update](#run-the-weekly-update)
-5. [Human Review (Interactive)](#human-review-interactive)
-6. [Adding a New Link During Review](#adding-a-new-link-during-review)
-7. [Project Layout](#project-layout)
-8. [Sources Format](#sources-format)
-9. [Modules Reference](#modules-reference)
-10. [Troubleshooting](#troubleshooting)
-11. [Git / GitHub Notes](#git--github-notes)
+4. [Async Shared-Folder Review (Teams/OneDrive)](#async-shared-folder-review-teamsonedrive)
+5. [Run the Weekly Update](#run-the-weekly-update)
+6. [Human Review (Interactive)](#human-review-interactive)
+7. [Adding a New Link During Review](#adding-a-new-link-during-review)
+8. [Project Layout](#project-layout)
+9. [Sources Format](#sources-format)
+10. [Modules Reference](#modules-reference)
+11. [Troubleshooting](#troubleshooting)
+12. [Git / GitHub Notes](#git--github-notes)
 
 ---
 
@@ -31,6 +32,7 @@ Built for research development teams — no coding experience required to run th
 │  1. DISCOVER  — Gemini searches the web for official pages   │
 │  2. GENERATE  — Scrape those pages → draft a Sponsor Guide   │
 │  3. REVIEW    — Human expert approves/edits/adds sources     │
+│               (interactive OR async via shared folder)        │
 └──────────────────────────────────────────────────────────────┘
                             ▼
 ┌──────────────────────────────────────────────────────────────┐
@@ -93,6 +95,8 @@ The tool will:
 3. Scrape the valid pages and draft a Sponsor Guide
 4. Walk you through an interactive review (see [Human Review](#human-review-interactive))
 
+If you prefer asynchronous expert review through Teams/OneDrive, see the next section and run bootstrap with `--async-review`.
+
 Everything is saved into a single program folder under `programs/`:
 
 ```
@@ -118,6 +122,86 @@ python3 pipeline.py programs/nsf_career_award/guide.md \
 ```
 
 From now on, re-run this command at any time (or schedule it weekly) to keep the guide current.
+
+---
+
+## Async Shared-Folder Review (Teams/OneDrive)
+
+Use this mode when you have many links and want experts to review later in a shared folder.
+
+### Step A — Dispatch review package
+
+```bash
+python3 bootstrap.py "NSF Faculty Early Career Development (CAREER) Program" \
+  --async-review \
+  --shared-review-dir "/Users/<you>/OneDrive - <Org>/Grant-Review"
+```
+
+This command:
+- builds `sources_pending.json` + `draft_guide.md` + `manifest.json`
+- stores a local copy in `programs/<slug>/review_packages/<review_id>/`
+- publishes to shared folder at:
+  - `<shared-review-dir>/<slug>/<review_id>/`
+
+`manifest.json` starts with:
+- `"status": "pending_review"`
+
+### Optional — send Teams/webhook notification automatically
+
+You can send a short notification message right after package publish.
+
+Option 1: pass URL in command:
+
+```bash
+python3 bootstrap.py "NSF Faculty Early Career Development (CAREER) Program" \
+  --async-review \
+  --shared-review-dir "/Users/<you>/OneDrive - <Org>/Grant-Review" \
+  --notify-webhook-url "https://<your-webhook-url>"
+```
+
+Option 2: store webhook in `.env`:
+
+```env
+REVIEW_NOTIFY_WEBHOOK_URL=https://<your-webhook-url>
+```
+
+Then run bootstrap without `--notify-webhook-url`.
+
+### Step B — Expert edits shared files
+
+Experts edit:
+- `sources_pending.json`
+- `draft_guide.md`
+
+When done, they update `manifest.json`:
+
+```json
+{
+  "status": "approved"
+}
+```
+
+### Step C — Collect approved edits and finalize locally
+
+```bash
+python3 collect_review.py "NSF Faculty Early Career Development (CAREER) Program" \
+  --shared-review-dir "/Users/<you>/OneDrive - <Org>/Grant-Review"
+```
+
+This writes:
+- `programs/<slug>/sources.json`
+- `programs/<slug>/guide.md`
+- updates local review copy in `programs/<slug>/review/`
+
+### Optional: watch mode (auto-collect when approved)
+
+```bash
+python3 collect_review.py "NSF Faculty Early Career Development (CAREER) Program" \
+  --shared-review-dir "/Users/<you>/OneDrive - <Org>/Grant-Review" \
+  --watch --interval-seconds 300
+```
+
+This polls every 5 minutes until `manifest.json` status becomes `approved`, then finalizes automatically.
 
 ---
 
@@ -235,6 +319,10 @@ CI-sponsor-guide-updater/
 ├── discover.py          ← Find candidate source URLs via Gemini + Google Search
 ├── generator.py         ← Generate a first-draft guide from scraped sources
 ├── review.py            ← Interactive human review CLI
+├── review_async.py      ← Shared-folder async review package helpers
+├── collect_review.py    ← Collect approved async review package
+├── notify_review.py     ← Optional webhook notification helper
+├── program_utils.py     ← Shared slug helper
 ├── requirements.txt     ← Python dependencies
 ├── .env.example         ← Template for API key
 ├── .env                 ← Your actual API key (git-ignored)
@@ -243,7 +331,9 @@ CI-sponsor-guide-updater/
     │   ├── sources.json
     │   ├── guide.md or *.docx     (baseline guide)
     │   ├── state.json             (git-ignored, runtime)
-    │   └── data/                  (git-ignored, runtime)
+    │   ├── data/                  (git-ignored, runtime)
+    │   ├── review/                (git-ignored, review artifacts)
+    │   └── review_packages/       (git-ignored, async package history)
     └── nsf_career/
         ├── sources.json
         ├── guide.md
@@ -260,6 +350,7 @@ Every program's files live together in one folder. Nothing is written to the pro
 - `.env` — API key
 - `programs/**/state.json` and `programs/**/data/` — runtime snapshots
 - `programs/**/review/` — review artifacts
+- `programs/**/review_packages/` — local async review package snapshots
 - `output/` — generated guides
 - `*.docx`, `*.doc` — Word files
 
@@ -303,6 +394,10 @@ Each program's `sources.json` is a simple list:
 | `discover.py` | Use Gemini + Google Search grounding to find candidate source URLs for a program |
 | `generator.py` | Scrape discovered pages and ask Gemini to draft a first Sponsor Guide |
 | `review.py` | Menu-driven CLI for human experts to approve, reject, edit, and add source links |
+| `review_async.py` | Create/publish/load async review packages in a shared folder |
+| `collect_review.py` | Pull approved async edits from shared folder and finalize |
+| `notify_review.py` | Send optional Teams/generic webhook notifications for async review |
+| `program_utils.py` | Shared utility for generating consistent program slugs |
 | `bootstrap.py` | End-to-end orchestrator: discover → validate → generate → review → finalize |
 
 ---
@@ -318,6 +413,9 @@ Each program's `sources.json` is a simple list:
 | URL marked "not reachable" during review | The page may be temporarily down or require special access. You can still add it — the pipeline will retry later |
 | Gemini can't detect sections | That's OK. The pipeline will try again on the next weekly run, or you can manually add `sections` to `sources.json` |
 | `404 NOT_FOUND` for model | The default model may have changed. Check `updater.py` for `DEFAULT_MODEL` and update if needed |
+| `collect_review.py` says "Review not approved yet" | Ask reviewer to set `manifest.json` status to `approved` in shared package |
+| Shared folder path with spaces fails | Wrap path in quotes, e.g. `--shared-review-dir "/Users/me/OneDrive - Org/Grant-Review"` |
+| Notification webhook failed | Verify `--notify-webhook-url` (or `REVIEW_NOTIFY_WEBHOOK_URL`) is valid and reachable |
 
 ---
 
@@ -325,7 +423,7 @@ Each program's `sources.json` is a simple list:
 
 Files that are **not** committed (by `.gitignore`):
 - `.env` — API key
-- `programs/**/state.json`, `programs/**/data/`, `programs/**/review/` — runtime artifacts
+- `programs/**/state.json`, `programs/**/data/`, `programs/**/review/`, `programs/**/review_packages/` — runtime artifacts
 - `output/` — generated guides
 - `*.docx`, `*.doc` — Word files
 

@@ -13,6 +13,7 @@ output/
 programs/**/state.json
 programs/**/data/
 programs/**/review/
+programs/**/review_packages/
 
 # Guide documents (working files, not source code)
 *.docx

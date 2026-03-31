@@ -11,9 +11,7 @@ Usage:
 """
 
 import argparse
-import json
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -21,27 +19,22 @@ from dotenv import load_dotenv
 
 import discover
 import generator
+import notify_review
+from program_utils import make_slug
 import review
+import review_async
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(_PROJECT_ROOT / ".env")
 
 
-def _make_slug(program: str) -> str:
-    """Convert a program name to a clean, short directory slug.
-
-    Examples:
-        "NSF CAREER award"  →  "nsf_career_award"
-        "NSF Faculty Early Career Development (CAREER) Program"
-            →  "nsf_faculty_early_career_development_career_program"
-    """
-    slug = program.lower()
-    slug = re.sub(r"[^a-z0-9]+", "_", slug)
-    slug = slug.strip("_")
-    return slug
-
-
-def run_bootstrap(program: str, skip_review: bool = False) -> None:
+def run_bootstrap(
+    program: str,
+    skip_review: bool = False,
+    async_review: bool = False,
+    shared_review_dir: str = "",
+    notify_webhook_url: str = "",
+) -> None:
     """Execute the full bootstrap pipeline for a new program.
 
     Args:
@@ -49,7 +42,7 @@ def run_bootstrap(program: str, skip_review: bool = False) -> None:
         skip_review: If True, auto-approve all reachable sources
             (useful for testing).
     """
-    slug = _make_slug(program)
+    slug = make_slug(program)
     program_dir = os.path.join("programs", slug)
     os.makedirs(program_dir, exist_ok=True)
 
@@ -93,6 +86,57 @@ def run_bootstrap(program: str, skip_review: bool = False) -> None:
     print(f"         Guide   → {guide_path}\n")
 
     # -- 4. Human review -------------------------------------------------------
+    if async_review:
+        print("[4/4] Preparing async review package ...")
+        review_id, package_dir = review_async.create_review_package(
+            program=program,
+            program_slug=slug,
+            program_dir=program_dir,
+            sources=sources,
+            guide_md=guide_md,
+        )
+        shared_dir = review_async.publish_review_package(
+            package_dir=package_dir,
+            shared_review_dir=shared_review_dir,
+            program_slug=slug,
+            review_id=review_id,
+        )
+        print("\n" + "=" * 60)
+        print("  Async review package published")
+        print("=" * 60)
+        print(f"  Program folder   : {program_dir}/")
+        print(f"  Review ID        : {review_id}")
+        print(f"  Local package    : {package_dir}")
+        print(f"  Shared package   : {shared_dir}")
+        print()
+        print("  Expert actions:")
+        print("    1) Edit sources_pending.json and draft_guide.md")
+        print("    2) Set manifest.json status to \"approved\"")
+        print()
+        print("  Then collect approved edits with:")
+        collect_cmd = (
+            "python3 collect_review.py "
+            f"\"{program}\" --shared-review-dir \"{shared_review_dir}\" "
+            f"--review-id {review_id}"
+        )
+        print(f"    {collect_cmd}")
+        print()
+
+        if notify_webhook_url:
+            message = notify_review.build_async_review_message(
+                program=program,
+                review_id=review_id,
+                shared_dir=shared_dir,
+                collect_cmd=collect_cmd,
+            )
+            error = notify_review.send_webhook_message(notify_webhook_url, message)
+            if error:
+                print(f"  [warn] Notification failed: {error}")
+            else:
+                print("  ✓ Notification sent to webhook")
+                print()
+        return
+
     if skip_review:
         print("[4/4] Skipping review (--skip-review). Auto-approving all sources.")
         approved = sources
@@ -131,8 +175,34 @@ def main() -> None:
         action="store_true",
         help="Auto-approve all sources (skip interactive review)",
     )
+    parser.add_argument(
+        "--async-review",
+        action="store_true",
+        help="Publish review package to shared folder and exit.",
+    )
+    parser.add_argument(
+        "--shared-review-dir",
+        default="",
+        help="Shared folder path for async review packages.",
+    )
+    parser.add_argument(
+        "--notify-webhook-url",
+        default=os.getenv("REVIEW_NOTIFY_WEBHOOK_URL", ""),
+        help=(
+            "Optional Teams/generic webhook URL for async-review notifications. "
+            "Defaults to REVIEW_NOTIFY_WEBHOOK_URL from environment."
+        ),
+    )
     args = parser.parse_args()
-    run_bootstrap(args.program, args.skip_review)
+    if args.async_review and not args.shared_review_dir:
+        parser.error("--shared-review-dir is required with --async-review")
+    run_bootstrap(
+        args.program,
+        skip_review=args.skip_review,
+        async_review=args.async_review,
+        shared_review_dir=args.shared_review_dir,
+        notify_webhook_url=args.notify_webhook_url,
+    )
 
 
 if __name__ == "__main__":
