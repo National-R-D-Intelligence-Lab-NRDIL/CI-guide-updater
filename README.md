@@ -389,10 +389,11 @@ CI-sponsor-guide-updater/
 ├── requirements.txt     ← Python dependencies
 ├── .env.example         ← Template for API key
 ├── .env                 ← Your actual API key (git-ignored)
-└── programs/            ← One folder per grant program
+└── programs/            ← One folder per grant program (see programs/README.md)
     ├── nih_r15/
     │   ├── sources.json
     │   ├── guide.md or *.docx     (baseline guide)
+    │   ├── output/                (git-ignored: generated .md / .docx / .pdf / evidence)
     │   ├── state.json             (git-ignored, runtime)
     │   ├── data/                  (git-ignored, runtime)
     │   ├── review/                (git-ignored, review artifacts)
@@ -400,6 +401,7 @@ CI-sponsor-guide-updater/
     └── nsf_career/
         ├── sources.json
         ├── guide.md
+        ├── output/                (git-ignored: pipeline outputs)
         ├── state.json             (git-ignored, runtime)
         ├── data/                  (git-ignored, runtime)
         └── review/                (git-ignored, review artifacts)
@@ -407,7 +409,7 @@ CI-sponsor-guide-updater/
             └── draft_guide.md
 ```
 
-Every program's files live together in one folder. Nothing is written to the project root.
+Every program's files live together in one folder. With a normal `pipeline.py` invocation using `--sources programs/<slug>/sources.json`, generated files go to `programs/<slug>/output/` by default.
 
 **Git-ignored files** (not uploaded to the repository):
 - `.env` — API key

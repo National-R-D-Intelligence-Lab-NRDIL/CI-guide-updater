@@ -21,7 +21,11 @@ programs/**/review_packages/
 
 # OS junk
 .DS_Store
+**/.DS_Store
 Thumbs.db
+
+# Scratch / test artifacts inside program output
+**/_smoke*.pdf
 
 # IDE
 .vscode/
