@@ -7,6 +7,7 @@ for a given grant program, then validates and classifies each URL.
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 import requests
@@ -51,6 +52,46 @@ Return ONLY a JSON array. Each element must have keys: "url", "label", \
 """
 
 
+def _extract_response_text(response) -> str:
+    """Return model text or raise with a clear reason (Gemini may return ``None``)."""
+    text = getattr(response, "text", None)
+    if text is not None and str(text).strip():
+        return str(text).strip()
+
+    details: list[str] = []
+
+    pf = getattr(response, "prompt_feedback", None)
+    if pf is not None:
+        br = getattr(pf, "block_reason", None)
+        if br is not None:
+            details.append(f"prompt_feedback.block_reason={br}")
+        msg = getattr(pf, "block_reason_message", None)
+        if msg:
+            details.append(str(msg))
+
+    cands = getattr(response, "candidates", None) or []
+    for i, cand in enumerate(cands):
+        fr = getattr(cand, "finish_reason", None)
+        if fr is not None:
+            details.append(f"candidate[{i}].finish_reason={fr}")
+        content = getattr(cand, "content", None)
+        parts = getattr(content, "parts", None) if content else None
+        if parts:
+            for part in parts:
+                t = getattr(part, "text", None)
+                if isinstance(t, str) and t.strip():
+                    return t.strip()
+
+    if not details:
+        details.append("no text parts and no candidates (or empty content)")
+
+    raise RuntimeError(
+        "Gemini returned no usable text for source discovery. "
+        + " ".join(details)
+        + " Try a shorter program name, retry later, or add sources manually to sources.json."
+    )
+
+
 def discover_sources(program: str) -> list[dict]:
     """Use Gemini + Google Search grounding to find source URLs.
 
@@ -78,7 +119,22 @@ def discover_sources(program: str) -> list[dict]:
         ),
     )
 
-    raw = response.text.strip()
+    try:
+        raw = _extract_response_text(response)
+    except RuntimeError:
+        # Google Search grounding sometimes yields no text parts; retry without tools.
+        print(
+            "[discover] No text in grounded response; retrying without Google Search ...",
+            file=sys.stderr,
+        )
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.1),
+        )
+        raw = _extract_response_text(response)
+
+    raw = raw.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
 
