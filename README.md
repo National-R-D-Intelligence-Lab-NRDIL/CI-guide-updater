@@ -41,7 +41,8 @@ Built for research development teams — no coding experience required to run th
 │  4. SCRAPE    — Re-fetch every approved source page          │
 │  5. DIFF      — Compare against the last snapshot            │
 │  6. UPDATE    — Gemini rewrites only the changed sections    │
-│  7. OUTPUT    — Save updated guide as .md and .docx          │
+│  7. OUTPUT    — Save updated guide as .md, .docx, and .pdf   │
+│               + optional citations and evidence map          │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,6 +59,8 @@ pip3 install -r requirements.txt
 ```
 
 > **macOS note:** Use `python3` / `pip3`. There is usually no bare `python` command unless you are inside a virtual environment.
+
+> **PDF export note:** PDF generation uses `fpdf2`, which is pure Python and requires no system libraries. It installs automatically with `pip3 install -r requirements.txt`.
 
 ### 2. Set up your Gemini API key
 
@@ -214,6 +217,13 @@ python3 pipeline.py programs/<slug>/guide.md \
     --sources programs/<slug>/sources.json
 ```
 
+By default, citations + evidence output are enabled:
+
+```bash
+python3 pipeline.py programs/<slug>/guide.md \
+    --sources programs/<slug>/sources.json
+```
+
 **Examples:**
 
 ```bash
@@ -234,7 +244,59 @@ python3 pipeline.py programs/nih_r15/NIH_R15_Sponsor_Guide_0325.docx \
 | 2 | Compare each page against its last snapshot |
 | 3 | If anything changed, send the diff to Gemini |
 | 4 | Gemini rewrites only the affected sections |
-| 5 | Save the result to `output/sponsor_guide_updated.md` and `.docx` |
+| 5 | Save the result to `output/sponsor_guide_updated.md`, `.docx`, and `.pdf` |
+
+Pipeline also writes:
+- `output/sponsor_guide_evidence.json` (claim-to-source audit trail)
+
+To disable citations for a run:
+
+```bash
+python3 pipeline.py programs/<slug>/guide.md \
+    --sources programs/<slug>/sources.json \
+    --no-citations
+```
+
+To refresh citations even when website content has no changes:
+
+```bash
+python3 pipeline.py programs/<slug>/guide.md \
+    --sources programs/<slug>/sources.json \
+    --refresh-citations
+```
+
+To refresh citations only (no scraping/diffing, useful behind restricted networks):
+
+```bash
+python3 pipeline.py programs/<slug>/guide.md \
+    --sources programs/<slug>/sources.json \
+    --refresh-citations-only
+```
+
+### Citation guardrails (default behavior)
+
+The citation pass enforces:
+- citations can only reference approved source names from `sources.json`
+- each citation must pass lexical overlap against scraped source text
+- malformed model JSON is discarded safely (no blind citation injection)
+
+Citation format:
+- in-text markers (clickable): `[1](https://...)`
+- references: `[1]: [Source Label](https://...)`
+
+For `.docx` export, markdown links in references are converted to clickable hyperlinks.
+For `.pdf` export, the guide is rendered to a styled, print-ready PDF via `fpdf2` (pure Python, zero system libraries required).
+Citation hyperlinks are preserved and clickable in both formats.
+
+### Paragraph-level source targeting (ChatGPT/Perplexity style)
+
+Yes, partially. This tool now adds:
+- per-claim evidence metadata in `output/sponsor_guide_evidence.json`
+- best-effort deep links using browser text fragments (`#:~:text=...`) when possible
+
+Notes:
+- deep links depend on target website behavior and browser support
+- when deep links are not reliable, the tool falls back to the page URL
 
 If no changes are found, the tool prints "All sources unchanged" and exits — nothing is overwritten.
 
@@ -313,6 +375,7 @@ You **do not** need to know the guide section names or edit any JSON files. Gemi
 CI-sponsor-guide-updater/
 ├── bootstrap.py         ← Onboard a new program (discover → generate → review)
 ├── pipeline.py          ← Weekly update runner (scrape → diff → update)
+├── cite.py              ← Guarded citation + footnote generator
 ├── scraper.py           ← Fetch + clean web pages, manage snapshots
 ├── differ.py            ← Extract meaningful text changes
 ├── updater.py           ← LLM-powered guide rewriting + section classification
@@ -391,6 +454,7 @@ Each program's `sources.json` is a simple list:
 | `differ.py` | Compare old vs new text and produce a structured summary of additions/removals |
 | `updater.py` | Send guide + diff to Gemini, get back the updated guide. Also provides `classify_sections()` for auto-detecting which guide sections a page relates to |
 | `pipeline.py` | Orchestrate the weekly workflow: load sources → scrape → diff → LLM update → save output |
+| `cite.py` | Add guarded footnote citations and produce an evidence audit map |
 | `discover.py` | Use Gemini + Google Search grounding to find candidate source URLs for a program |
 | `generator.py` | Scrape discovered pages and ask Gemini to draft a first Sponsor Guide |
 | `review.py` | Menu-driven CLI for human experts to approve, reject, edit, and add source links |
@@ -413,9 +477,11 @@ Each program's `sources.json` is a simple list:
 | URL marked "not reachable" during review | The page may be temporarily down or require special access. You can still add it — the pipeline will retry later |
 | Gemini can't detect sections | That's OK. The pipeline will try again on the next weekly run, or you can manually add `sections` to `sources.json` |
 | `404 NOT_FOUND` for model | The default model may have changed. Check `updater.py` for `DEFAULT_MODEL` and update if needed |
+| Citation run produced no references | Model output may have failed guardrails; check if source pages contain matching text and retry |
 | `collect_review.py` says "Review not approved yet" | Ask reviewer to set `manifest.json` status to `approved` in shared package |
 | Shared folder path with spaces fails | Wrap path in quotes, e.g. `--shared-review-dir "/Users/me/OneDrive - Org/Grant-Review"` |
 | Notification webhook failed | Verify `--notify-webhook-url` (or `REVIEW_NOTIFY_WEBHOOK_URL`) is valid and reachable |
+| Guide did not regenerate because no website changes | Run pipeline with `--refresh-citations` to force citation refresh on the current guide |
 
 ---
 
@@ -426,6 +492,7 @@ Files that are **not** committed (by `.gitignore`):
 - `programs/**/state.json`, `programs/**/data/`, `programs/**/review/`, `programs/**/review_packages/` — runtime artifacts
 - `output/` — generated guides
 - `*.docx`, `*.doc` — Word files
+- `*.pdf` — exported PDF guides
 
 To publish:
 

@@ -36,12 +36,23 @@ from typing import Optional
 
 import mammoth
 from docx import Document
+from docx.opc.constants import RELATIONSHIP_TYPE
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Pt
 from dotenv import load_dotenv
 
+import cite
 import differ
 import scraper
 import updater
+
+try:
+    import markdown as _markdown_lib
+    from fpdf import FPDF as _FPDF
+    _PDF_AVAILABLE = True
+except Exception:
+    _PDF_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
@@ -141,17 +152,30 @@ def _md_to_docx(md_text: str, path: str) -> None:
             table = doc.add_table(rows=1 + len(rows), cols=len(headers))
             table.style = "Table Grid"
             for ci, h in enumerate(headers):
-                table.rows[0].cells[ci].text = h
+                p = table.rows[0].cells[ci].paragraphs[0]
+                p.text = ""
+                _add_inline_formatting(p, h)
             for ri, row in enumerate(rows):
                 for ci, cell in enumerate(row):
                     if ci < len(headers):
-                        table.rows[ri + 1].cells[ci].text = cell
+                        p = table.rows[ri + 1].cells[ci].paragraphs[0]
+                        p.text = ""
+                        _add_inline_formatting(p, cell)
             continue
 
-        # --- bullet list ---
-        m = re.match(r"^[-*]\s+(.+)$", line)
+        # --- bullet list (including indented sub-bullets) ---
+        m = re.match(r"^\s*[-*+]\s+(.+)$", line)
         if m:
-            doc.add_paragraph(m.group(1), style="List Bullet")
+            p = doc.add_paragraph(style="List Bullet")
+            _add_inline_formatting(p, m.group(1))
+            i += 1
+            continue
+
+        # --- numbered list ---
+        m = re.match(r"^\s*\d+\.\s+(.+)$", line)
+        if m:
+            p = doc.add_paragraph(style="List Number")
+            _add_inline_formatting(p, m.group(1))
             i += 1
             continue
 
@@ -168,8 +192,31 @@ def _md_to_docx(md_text: str, path: str) -> None:
     doc.save(path)
 
 
-def _add_inline_formatting(paragraph, text: str) -> None:
-    """Parse **bold** and *italic* markup and add styled runs."""
+def _add_hyperlink(paragraph, text: str, url: str) -> None:
+    """Add a clickable hyperlink run to a paragraph."""
+    part = paragraph.part
+    r_id = part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), r_id)
+
+    new_run = OxmlElement("w:r")
+    r_pr = OxmlElement("w:rPr")
+    u = OxmlElement("w:u")
+    u.set(qn("w:val"), "single")
+    color = OxmlElement("w:color")
+    color.set(qn("w:val"), "0000FF")
+    r_pr.append(u)
+    r_pr.append(color)
+    new_run.append(r_pr)
+    t = OxmlElement("w:t")
+    t.text = text
+    new_run.append(t)
+    hyperlink.append(new_run)
+    paragraph._p.append(hyperlink)
+
+
+def _add_emphasis_runs(paragraph, text: str) -> None:
+    """Parse **bold** and *italic* in plain text segments."""
     pattern = re.compile(r"(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*)")
     pos = 0
     for m in pattern.finditer(text):
@@ -190,6 +237,20 @@ def _add_inline_formatting(paragraph, text: str) -> None:
         paragraph.add_run(text[pos:])
 
 
+def _add_inline_formatting(paragraph, text: str) -> None:
+    """Parse links + emphasis and add styled runs."""
+    # Handles both [text](url) and [[1]](url) style citation links.
+    link_pat = re.compile(r"\[([^\]]*(?:\[[^\]]*\])?[^\]]*)\]\((https?://[^)\s]+)\)")
+    pos = 0
+    for m in link_pat.finditer(text):
+        if m.start() > pos:
+            _add_emphasis_runs(paragraph, text[pos : m.start()])
+        _add_hyperlink(paragraph, m.group(1), m.group(2))
+        pos = m.end()
+    if pos < len(text):
+        _add_emphasis_runs(paragraph, text[pos:])
+
+
 # ---------------------------------------------------------------------------
 # Snapshot reader
 # ---------------------------------------------------------------------------
@@ -204,6 +265,110 @@ def _read_snapshot(name: str, data_dir: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Markdown → PDF converter
+# ---------------------------------------------------------------------------
+
+# Characters outside fpdf2's default Latin-1 core fonts, mapped to safe equivalents.
+_UNICODE_REPLACEMENTS = {
+    "\u2018": "'",   # left single quotation mark
+    "\u2019": "'",   # right single quotation mark
+    "\u201a": ",",   # single low-9 quotation mark
+    "\u201c": '"',   # left double quotation mark
+    "\u201d": '"',   # right double quotation mark
+    "\u201e": '"',   # double low-9 quotation mark
+    "\u2013": "-",   # en dash
+    "\u2014": "--",  # em dash
+    "\u2015": "--",  # horizontal bar
+    "\u2026": "...", # horizontal ellipsis
+    "\u00a0": " ",   # non-breaking space
+    "\u00b7": "*",   # middle dot
+    "\u2022": "*",   # bullet
+    "\u2023": "*",   # triangular bullet
+    "\u2032": "'",   # prime
+    "\u2033": '"',   # double prime
+}
+
+
+def _sanitize_for_pdf(text: str) -> str:
+    """Replace Unicode characters unsupported by fpdf2's Latin-1 core fonts."""
+    import unicodedata
+    for char, replacement in _UNICODE_REPLACEMENTS.items():
+        text = text.replace(char, replacement)
+    # Normalize and drop any remaining non-Latin-1 characters.
+    result = []
+    for char in text:
+        if ord(char) <= 255:
+            result.append(char)
+        else:
+            normalized = unicodedata.normalize("NFKD", char)
+            ascii_equiv = normalized.encode("ascii", "ignore").decode("ascii")
+            result.append(ascii_equiv if ascii_equiv else "?")
+    return "".join(result)
+
+
+_LIST_ITEM_RE = re.compile(r"^(\s*)([-*+]|\d+\.)\s")
+
+
+def _ensure_blank_before_lists(md_text: str) -> str:
+    """Insert a blank line before the first list item in any run of list items
+    that immediately follows a non-blank, non-list line.
+
+    The Python ``markdown`` library needs this gap to recognise bullets/numbers
+    as ``<ul>``/``<ol>`` instead of folding them into the preceding paragraph.
+    """
+    lines = md_text.split("\n")
+    result: list[str] = []
+    for i, line in enumerate(lines):
+        if _LIST_ITEM_RE.match(line) and i > 0:
+            prev = result[-1] if result else ""
+            if prev.strip() and not _LIST_ITEM_RE.match(prev):
+                result.append("")
+        result.append(line)
+    return "\n".join(result)
+
+
+def _md_to_pdf(md_text: str, path: str) -> None:
+    """Convert markdown to a styled PDF using fpdf2 (pure Python, zero system dependencies).
+
+    Raises:
+        ImportError: If markdown or fpdf2 are not installed.
+    """
+    if not _PDF_AVAILABLE:
+        raise ImportError(
+            "PDF export requires 'markdown' and 'fpdf2'. "
+            "Run: pip3 install markdown fpdf2"
+        )
+
+    # Sanitize Unicode before converting so fpdf2's Latin-1 fonts don't choke.
+    safe_md = _sanitize_for_pdf(md_text)
+
+    # The Python markdown library requires a blank line before the first list
+    # item; without it, bullets are swallowed into the preceding <p> tag.
+    safe_md = _ensure_blank_before_lists(safe_md)
+
+    # Convert markdown → HTML, then feed to fpdf2's HTML renderer.
+    body_html = _markdown_lib.markdown(
+        safe_md,
+        extensions=["tables", "fenced_code", "sane_lists"],
+    )
+
+    # fpdf2 needs explicit width on <table> tags for proper column sizing,
+    # and left-align all cells explicitly (fpdf2 defaults to center).
+    body_html = body_html.replace("<table>", '<table width="100%">')
+    body_html = body_html.replace("<th>", '<th align="left">')
+    body_html = body_html.replace("<td>", '<td align="left">')
+
+    full_html = f"<html><body>{body_html}</body></html>"
+
+    pdf = _FPDF(orientation="P", unit="pt", format="Letter")
+    pdf.set_margins(left=72, top=72, right=72)
+    pdf.set_auto_page_break(auto=True, margin=72)
+    pdf.add_page()
+    pdf.write_html(full_html)
+    pdf.output(path)
+
+
+# ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
 
@@ -214,6 +379,10 @@ def run_pipeline(
     model_name: str = updater.DEFAULT_MODEL,
     state_file: Optional[str] = None,
     data_dir: Optional[str] = None,
+    with_citations: bool = True,
+    citation_model: Optional[str] = None,
+    refresh_citations: bool = False,
+    refresh_citations_only: bool = False,
 ) -> bool:
     """Execute the full scrape → diff → update pipeline.
 
@@ -241,71 +410,112 @@ def run_pipeline(
     print(f"       data  → {data_dir}")
 
     # -- 2. Scrape & diff -----------------------------------------------------
-    print("[2/4] Checking sources for updates ...")
     all_diffs: list[tuple[str, list[str], str]] = []
+    if refresh_citations_only:
+        refresh_citations = True
+        print("[2/4] Skipping scrape/diff (--refresh-citations-only) ...")
+    else:
+        print("[2/4] Checking sources for updates ...")
+        for src in sources:
+            name, url = src["name"], src["url"]
+            sections = src.get("sections", [])
+            old_text = _read_snapshot(name, data_dir)
 
-    for src in sources:
-        name, url = src["name"], src["url"]
-        sections = src.get("sections", [])
-        old_text = _read_snapshot(name, data_dir)
+            try:
+                changed = scraper.check_for_updates(
+                    url,
+                    name,
+                    state_file=state_file,
+                    data_dir=data_dir,
+                )
+            except Exception as exc:
+                print(f"       ⚠  {name}: scrape failed — {exc}")
+                continue
 
-        try:
-            changed = scraper.check_for_updates(
-                url,
-                name,
-                state_file=state_file,
-                data_dir=data_dir,
-            )
-        except Exception as exc:
-            print(f"       ⚠  {name}: scrape failed — {exc}")
-            continue
+            if changed:
+                new_text = _read_snapshot(name, data_dir)
+                diff = differ.extract_changes(old_text, new_text)
 
-        if changed:
-            new_text = _read_snapshot(name, data_dir)
-            diff = differ.extract_changes(old_text, new_text)
+                if not sections:
+                    try:
+                        sections = updater.classify_sections(new_text, guide_md)
+                        if sections:
+                            print(
+                                f"       ℹ  {name}: auto-detected sections → {', '.join(sections)}"
+                            )
+                    except Exception:
+                        pass
 
-            if not sections:
-                try:
-                    sections = updater.classify_sections(new_text, guide_md)
-                    if sections:
-                        print(f"       ℹ  {name}: auto-detected sections → {', '.join(sections)}")
-                except Exception:
-                    pass
+                all_diffs.append((name, sections, diff))
+                print(f"       ✓  {name}: changes detected")
+            else:
+                print(f"       ·  {name}: no changes")
 
-            all_diffs.append((name, sections, diff))
-            print(f"       ✓  {name}: changes detected")
-        else:
-            print(f"       ·  {name}: no changes")
-
-    if not all_diffs:
+    if not all_diffs and not refresh_citations:
         print("\n[result] All sources unchanged — guide is up to date.")
         return False
 
-    # -- 3. Update via LLM ----------------------------------------------------
-    print(f"[3/4] Sending {len(all_diffs)} diff(s) to LLM ({model_name}) ...")
+    updated_md = guide_md
+    did_llm_update = False
+    if all_diffs:
+        # -- 3. Update via LLM ------------------------------------------------
+        print(f"[3/4] Sending {len(all_diffs)} diff(s) to LLM ({model_name}) ...")
 
-    diff_blocks: list[str] = []
-    for name, sections, diff in all_diffs:
-        header = f"## Source: {name}"
-        if sections:
-            header += (
-                "\nRelevant guide sections: "
-                + ", ".join(f'"{s}"' for s in sections)
+        diff_blocks: list[str] = []
+        for name, sections, diff in all_diffs:
+            header = f"## Source: {name}"
+            if sections:
+                header += (
+                    "\nRelevant guide sections: "
+                    + ", ".join(f'"{s}"' for s in sections)
+                )
+            diff_blocks.append(f"{header}\n\n{diff}")
+        combined_diff = "\n\n".join(diff_blocks)
+
+        try:
+            updated_md = updater.update_guide(guide_md, combined_diff, model_name)
+            did_llm_update = True
+        except EnvironmentError as exc:
+            print(f"\n[error] {exc}")
+            return False
+        except Exception as exc:
+            print(f"\n[error] LLM call failed — {exc}")
+            return False
+    else:
+        print("[3/4] No source diffs found; refreshing citations on current guide ...")
+
+    # -- 4. Optional citation pass --------------------------------------------
+    evidence: list[dict] = []
+    if with_citations:
+        print("[4/5] Adding citations with guardrails ...")
+        snapshot_map: dict[str, str] = {}
+        for src in sources:
+            name = src["name"]
+            txt = _read_snapshot(name, data_dir)
+            if not txt and not refresh_citations_only:
+                try:
+                    txt = scraper.fetch_and_clean_text(src["url"])
+                except Exception:
+                    txt = ""
+            snapshot_map[name] = txt
+        try:
+            cited_md, evidence = cite.add_citations(
+                updated_md,
+                sources=sources,
+                snapshots_by_name=snapshot_map,
+                model_name=citation_model or model_name,
             )
-        diff_blocks.append(f"{header}\n\n{diff}")
-    combined_diff = "\n\n".join(diff_blocks)
+            if evidence:
+                updated_md = cited_md
+                print(f"       ✓  Added citations to {len(evidence)} claim(s)")
+            else:
+                print("       ⚠  No validated citations added (continuing without citations)")
+        except Exception as exc:
+            print(f"       ⚠  Citation pass failed ({exc}); continuing without citations")
 
-    try:
-        updated_md = updater.update_guide(guide_md, combined_diff, model_name)
-    except EnvironmentError as exc:
-        print(f"\n[error] {exc}")
-        return False
-    except Exception as exc:
-        print(f"\n[error] LLM call failed — {exc}")
-        return False
-
-    # -- 4. Write outputs ------------------------------------------------------
-    print("[4/4] Saving updated guide ...")
+    # -- 5. Write outputs ------------------------------------------------------
+    step_label = "[5/5]" if with_citations else "[4/4]"
+    print(f"{step_label} Saving updated guide ...")
     os.makedirs(output_dir, exist_ok=True)
 
     md_path = os.path.join(output_dir, "sponsor_guide_updated.md")
@@ -319,8 +529,28 @@ def run_pipeline(
     except Exception as exc:
         print(f"       ⚠  .docx export failed ({exc}); markdown saved OK")
 
-    print(f"\n[result] Guide updated with changes from: "
-          f"{', '.join(n for n, _, _ in all_diffs)}")
+    pdf_path = os.path.join(output_dir, "sponsor_guide_updated.pdf")
+    try:
+        _md_to_pdf(updated_md, pdf_path)
+        print(f"       ✓  PDF      → {pdf_path}")
+    except ImportError as exc:
+        print(f"       ⚠  PDF export skipped ({exc})")
+    except Exception as exc:
+        print(f"       ⚠  PDF export failed ({exc}); other formats saved OK")
+
+    if with_citations and evidence:
+        evidence_path = os.path.join(output_dir, "sponsor_guide_evidence.json")
+        with open(evidence_path, "w", encoding="utf-8") as fh:
+            json.dump(evidence, fh, indent=2)
+        print(f"       ✓  Evidence → {evidence_path}")
+
+    if did_llm_update:
+        print(
+            f"\n[result] Guide updated with changes from: "
+            f"{', '.join(n for n, _, _ in all_diffs)}"
+        )
+    else:
+        print("\n[result] Guide text unchanged; citations refreshed.")
     return True
 
 
@@ -346,8 +576,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default="output",
-        help="Output directory for the updated guide (default: output/)",
+        default=None,
+        help="Output directory (default: <sources_dir>/output/)",
     )
     parser.add_argument(
         "--state",
@@ -364,15 +594,57 @@ def main() -> None:
         default=updater.DEFAULT_MODEL,
         help=f"LLM model name (default: {updater.DEFAULT_MODEL})",
     )
+    parser.add_argument(
+        "--with-citations",
+        dest="with_citations",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--no-citations",
+        dest="with_citations",
+        action="store_false",
+        help="Disable citation pass (enabled by default).",
+    )
+    parser.add_argument(
+        "--citation-model",
+        default=None,
+        help="Model used for citation mapping (default: same as --model).",
+    )
+    parser.add_argument(
+        "--refresh-citations",
+        action="store_true",
+        help=(
+            "Run citation pass even when no source diffs are detected "
+            "(guide text is left unchanged)."
+        ),
+    )
+    parser.add_argument(
+        "--refresh-citations-only",
+        action="store_true",
+        help=(
+            "Skip scrape/diff and only regenerate citations/evidence for the current guide "
+            "using existing snapshots in the program data folder."
+        ),
+    )
+    parser.set_defaults(with_citations=True)
     args = parser.parse_args()
+
+    output_dir = args.output
+    if output_dir is None:
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(args.sources)), "output")
 
     run_pipeline(
         args.sources,
         args.guide,
-        args.output,
+        output_dir,
         args.model,
         state_file=args.state,
         data_dir=args.data_dir,
+        with_citations=args.with_citations,
+        citation_model=args.citation_model,
+        refresh_citations=args.refresh_citations,
+        refresh_citations_only=args.refresh_citations_only,
     )
 
 
