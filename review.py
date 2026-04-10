@@ -1,6 +1,6 @@
 """Human Review CLI.
 
-Menu-driven interface for non-technical users to review, approve, reject,
+Menu-driven interface for users to review, approve, reject,
 edit, and **add** source links.  New links are automatically validated and
 their relevant guide sections are detected by Gemini — no manual JSON
 editing required.
@@ -183,7 +183,7 @@ def interactive_review(
 ) -> list[dict]:
     """Walk the expert through each source for approval.
 
-    Uses a numbered menu so non-technical users can participate easily.
+    Uses a numbered menu so users can participate easily.
     Supports adding new links at any point during the review.
 
     Args:

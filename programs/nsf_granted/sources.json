@@ -1,0 +1,33 @@
+[
+  {
+    "name": "NSF_GRANTED_Preparing_Your_Proposal",
+    "url": "https://www.nsf.gov/funding/preparing-proposal",
+    "sections": [
+      "Application Requirements",
+      "Tips",
+      "Resources"
+    ]
+  },
+  {
+    "name": "NSF_GRANTED_NSF_Proposal_Award_Policies_Procedures_Guide_PAPPG",
+    "url": "https://www.nsf.gov/policies/pappg",
+    "sections": [
+      "Eligibility",
+      "Award Size",
+      "Application Requirements",
+      "Review Criteria",
+      "Resources",
+      "Tips"
+    ]
+  },
+  {
+    "name": "nsf_granted_manual_program_page",
+    "url": "https://www.nsf.gov/od/oia/granted",
+    "sections": []
+  },
+  {
+    "name": "nsf_granted_manual_www_nsf_gov",
+    "url": "https://www.nsf.gov/funding/opportunities/granted-growing-research-access-nationally-transformative-economic",
+    "sections": []
+  }
+]

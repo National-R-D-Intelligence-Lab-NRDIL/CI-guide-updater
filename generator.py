@@ -41,6 +41,7 @@ Rules:
 - Use ONLY facts from the provided source texts. Never hallucinate.
 - Preserve exact dates, dollar amounts, and policy language.
 - Use clear markdown: headings, bullet lists, tables, bold for emphasis.
+- Key Dates tables: use compact rows (header, separator, then data rows); never pad cells with spaces to fill width.
 - At the end, list every source URL under a "## Sources" heading.
 """
 

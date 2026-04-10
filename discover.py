@@ -19,7 +19,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(_PROJECT_ROOT / ".env")
 
 DISCOVERY_PROMPT_TEMPLATE = """\
-Find the most important official government web pages for the "{program}" \
+Find the most important official web pages for the "{program}" \
 grant program. I need CURRENT, WORKING URLs (as of 2026) that contain:
 
 1. The main program overview page

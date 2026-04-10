@@ -1,4 +1,4 @@
-# CI Sponsor Guide Updater
+# CI Sponsor Guide Tool
 
 Automated Python tool that monitors government grant websites, detects policy changes, and keeps your Sponsor Guides up to date using **Google Gemini**.
 
@@ -79,6 +79,26 @@ You can get a free API key at [https://aistudio.google.com/apikey](https://aistu
 ### 3. You're ready!
 
 Continue to the next section to onboard your first grant program.
+
+### Optional: Streamlit frontend (multipage UI)
+
+You can run a local UI with a staged workflow:
+
+```bash
+streamlit run app/main.py
+```
+
+Pages included:
+- `Create New Program`
+- `Review Sources`
+- `Generate First Draft` (action inside Review Sources)
+- `Promote Draft to Baseline` (action inside Review Sources)
+- `Run Weekly Update`
+- `Outputs`
+- `Audit / Evidence`
+
+The Streamlit app reads/writes the same program artifacts under `programs/<slug>/`,
+so existing CLI commands remain fully compatible.
 
 ---
 
