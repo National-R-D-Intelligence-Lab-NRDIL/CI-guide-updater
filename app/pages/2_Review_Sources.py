@@ -169,6 +169,17 @@ if rows:
     source_picker_key = f"review_source_name_{selected_slug}"
     next_source_key = f"{source_picker_key}_next"
 
+    # Freeze the initial queue order so position numbers stay stable
+    # as sources are reviewed and the live queue reorders.
+    initial_order_key = f"{source_picker_key}_initial_order"
+    if initial_order_key not in st.session_state:
+        st.session_state[initial_order_key] = list(queue_names)
+    frozen_order: list[str] = st.session_state[initial_order_key]
+    # If sources were added after the page first loaded, append them at the end.
+    for name in queue_names:
+        if name not in frozen_order:
+            frozen_order.append(name)
+
     pending_next_source = str(st.session_state.get(next_source_key, "")).strip()
     if pending_next_source in queue_names:
         st.session_state[source_picker_key] = pending_next_source
@@ -202,17 +213,20 @@ if rows:
             ),
             label_visibility="collapsed",
         )
-        current_position = next(
-            (i + 1 for i, row in enumerate(rows) if str(row["name"]) == source_name),
-            1,
+        current_position = (
+            frozen_order.index(source_name) + 1
+            if source_name in frozen_order
+            else queue_names.index(source_name) + 1
+            if source_name in queue_names
+            else 1
         )
-        st.caption(f"Viewing {current_position} of {len(rows)}")
+        st.caption(f"Viewing {current_position} of {len(frozen_order)}")
 
     selected_row = next((r for r in rows if r["name"] == source_name), None)
     if selected_row:
         with detail_col:
             with st.container(border=True):
-                st.caption(f"Source {current_position} of {len(rows)}")
+                st.caption(f"Source {current_position} of {len(frozen_order)}")
                 st.markdown(f"#### {selected_row['display_label']}")
                 meta_col1, meta_col2 = st.columns(2)
                 meta_col1.write(f"**Status:** {selected_row.get('status', 'unreviewed').replace('_', ' ')}")
