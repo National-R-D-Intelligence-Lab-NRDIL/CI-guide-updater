@@ -1,158 +1,120 @@
 # CI Sponsor Guide Tool
 
-Automated Python tool that monitors government grant websites, detects policy changes, and keeps your Sponsor Guides up to date using **Google Gemini**.
+CI Sponsor Guide Tool helps teams discover, review, and keep grant sponsor guides current. It monitors official funding websites, detects changes, and regenerates guide output with citation support using Google Gemini.
 
-Built for research development teams — no coding experience required to run the day-to-day workflow.
+It is designed for non-developers to use in day-to-day work, while still staying fully scriptable from the command line.
 
----
+## What It Does
 
-## Table of Contents
+1. Finds official source pages for a grant program.
+2. Helps reviewers approve, reject, or add links.
+3. Builds a baseline sponsor guide.
+4. Runs weekly updates to detect website changes.
+5. Exports updated `.md`, `.docx`, and `.pdf` files.
 
-1. [How It Works](#how-it-works)
-2. [Quick Start](#quick-start)
-3. [Onboard a New Grant Program](#onboard-a-new-grant-program)
-4. [Async Shared-Folder Review (Teams/OneDrive)](#async-shared-folder-review-teamsonedrive)
-5. [Run the Weekly Update](#run-the-weekly-update)
-6. [Human Review (Interactive)](#human-review-interactive)
-7. [Adding a New Link During Review](#adding-a-new-link-during-review)
-8. [Project Layout](#project-layout)
-9. [Sources Format](#sources-format)
-10. [Modules Reference](#modules-reference)
-11. [Troubleshooting](#troubleshooting)
-12. [Git / GitHub Notes](#git--github-notes)
+## Workflow
 
----
+```text
+One-time setup per program
+  Discover -> Generate draft -> Review sources -> Finalize baseline
 
-## How It Works
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                  One-time setup (per program)                │
-│                                                              │
-│  1. DISCOVER  — Gemini searches the web for official pages   │
-│  2. GENERATE  — Scrape those pages → draft a Sponsor Guide   │
-│  3. REVIEW    — Human expert approves/edits/adds sources     │
-│               (interactive OR async via shared folder)       │
-└──────────────────────────────────────────────────────────────┘
-                            ▼
-┌──────────────────────────────────────────────────────────────┐
-│              Weekly update (automated / scheduled)           │
-│                                                              │
-│  4. SCRAPE    — Re-fetch every approved source page          │
-│  5. DIFF      — Compare against the last snapshot            │
-│  6. UPDATE    — Gemini rewrites only the changed sections    │
-│  7. OUTPUT    — Save updated guide as .md, .docx, and .pdf   │
-│               + optional citations and evidence map          │
-└──────────────────────────────────────────────────────────────┘
+Weekly update
+  Scrape -> Diff -> Update guide -> Export outputs
 ```
 
-**Key feature:** You never need to manually specify which guide sections a link relates to. Gemini reads the page content and the guide headings, then figures out the mapping automatically.
-
----
+You do not need to manually map links to guide sections. The tool reads the source content and guide headings, then auto-detects the best section matches.
 
 ## Quick Start
 
-### 1. Install Python dependencies
+### 1. Install dependencies
 
 ```bash
 pip3 install -r requirements.txt
 ```
 
-> **macOS note:** Use `python3` / `pip3`. There is usually no bare `python` command unless you are inside a virtual environment.
+On macOS, use `python3` and `pip3`. A bare `python` command is often not available unless you are inside a virtual environment.
 
-> **PDF export note:** PDF generation uses `fpdf2`, which is pure Python and requires no system libraries. It installs automatically with `pip3 install -r requirements.txt`.
-
-### 2. Set up your Gemini API key
+### 2. Add your Gemini API key
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and paste your key:
+Then edit `.env` and add:
 
-```
+```env
 GEMINI_API_KEY=your-gemini-api-key-here
 ```
 
-You can get a free API key at [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+You can get a key from [Google AI Studio](https://aistudio.google.com/apikey).
 
-### 3. You're ready!
+### 3. Launch the UI or use the CLI
 
-Continue to the next section to onboard your first grant program.
-
-### Optional: Streamlit frontend (multipage UI)
-
-You can run a local UI with a staged workflow:
+To open the Streamlit app:
 
 ```bash
 streamlit run app/main.py
 ```
 
-Pages included:
-- `Create New Program`
-- `Review Sources`
-- `Generate First Draft` (action inside Review Sources)
-- `Promote Draft to Baseline` (action inside Review Sources)
-- `Run Weekly Update`
-- `Outputs`
-- `Audit / Evidence`
+## Streamlit App
 
-The Streamlit app reads/writes the same program artifacts under `programs/<slug>/`,
-so existing CLI commands remain fully compatible.
+The Streamlit app gives you a guided workflow over the same files used by the CLI.
 
----
+Available pages:
 
-## Onboard a New Grant Program
+- Create New Program
+- Review Sources
+- Run Weekly Update
+- Outputs
+- Audit / Evidence
 
-Use this whenever you want to start tracking a new funding program (e.g. NIH R01, NSF CAREER, NIH R15).
+Use the UI if you want a more visual, step-by-step experience. It reads and writes the same artifacts under `programs/<slug>/`, so the CLI and UI stay in sync.
 
-### Step 1 — Run the bootstrap command
+## Common Tasks
+
+### Create a new grant program
+
+Use this when onboarding a new funding opportunity such as NIH R01, NIH R15, or NSF CAREER.
 
 ```bash
 python3 bootstrap.py "NSF CAREER award"
 ```
 
-The tool will:
-1. Search the web for official program pages
-2. Validate every URL it finds
-3. Scrape the valid pages and draft a Sponsor Guide
-4. Walk you through an interactive review (see [Human Review](#human-review-interactive))
+This will:
 
-If you prefer asynchronous expert review through Teams/OneDrive, see the next section and run bootstrap with `--async-review`.
+1. Search for official source pages.
+2. Validate the URLs it finds.
+3. Scrape the pages and draft a sponsor guide.
+4. Start the review flow so an expert can approve the source list.
 
-Everything is saved into a single program folder under `programs/`:
+The result is stored in a program folder like:
 
-```
+```text
 programs/nsf_career_award/
-├── sources.json                ← approved source links
-├── guide.md                    ← baseline Sponsor Guide
-└── review/                     ← (git-ignored) review artifacts
+├── sources.json
+├── guide.md
+└── review/
     ├── sources_pending.json
     └── draft_guide.md
 ```
 
-The folder name is derived automatically from the program name you provide (lowercased, spaces/special characters become underscores).
+### Review sources interactively
 
-### Step 2 — Review the draft guide
+Bootstrap uses a simple menu so reviewers can approve, reject, edit, or add links without touching JSON by hand.
 
-Open `programs/<slug>/guide.md` in any text editor and make corrections if needed. This becomes your baseline.
+Typical choices include:
 
-### Step 3 — Run the first weekly update
+- Approve a source
+- Reject a source
+- Edit the URL
+- Add a new link
+- Finish review early
 
-```bash
-python3 pipeline.py programs/nsf_career_award/guide.md \
-    --sources programs/nsf_career_award/sources.json
-```
+If you add a new link during review, the tool checks the URL, scrapes the page, and auto-detects the guide sections it belongs to.
 
-From now on, re-run this command at any time (or schedule it weekly) to keep the guide current.
+### Use async shared-folder review
 
----
-
-## Async Shared-Folder Review (Teams/OneDrive)
-
-Use this mode when you have many links and want experts to review later in a shared folder.
-
-### Step A — Dispatch review package
+Use this path when your team reviews sources in OneDrive, Teams, or another shared folder.
 
 ```bash
 python3 bootstrap.py "NSF Faculty Early Career Development (CAREER) Program" \
@@ -160,20 +122,13 @@ python3 bootstrap.py "NSF Faculty Early Career Development (CAREER) Program" \
   --shared-review-dir "/Users/<you>/OneDrive - <Org>/Grant-Review"
 ```
 
-This command:
-- builds `sources_pending.json` + `draft_guide.md` + `manifest.json`
-- stores a local copy in `programs/<slug>/review_packages/<review_id>/`
-- publishes to shared folder at:
-  - `<shared-review-dir>/<slug>/<review_id>/`
+This creates a review package containing:
 
-`manifest.json` starts with:
-- `"status": "pending_review"`
+- `sources_pending.json`
+- `draft_guide.md`
+- `manifest.json`
 
-### Optional — send Teams/webhook notification automatically
-
-You can send a short notification message right after package publish.
-
-Option 1: pass URL in command:
+You can optionally notify reviewers with a webhook:
 
 ```bash
 python3 bootstrap.py "NSF Faculty Early Career Development (CAREER) Program" \
@@ -182,41 +137,20 @@ python3 bootstrap.py "NSF Faculty Early Career Development (CAREER) Program" \
   --notify-webhook-url "https://<your-webhook-url>"
 ```
 
-Option 2: store webhook in `.env`:
+Or store the webhook in `.env`:
 
 ```env
 REVIEW_NOTIFY_WEBHOOK_URL=https://<your-webhook-url>
 ```
 
-Then run bootstrap without `--notify-webhook-url`.
-
-### Step B — Expert edits shared files
-
-Experts edit:
-- `sources_pending.json`
-- `draft_guide.md`
-
-When done, they update `manifest.json`:
-
-```json
-{
-  "status": "approved"
-}
-```
-
-### Step C — Collect approved edits and finalize locally
+After the shared files are approved, collect them locally:
 
 ```bash
 python3 collect_review.py "NSF Faculty Early Career Development (CAREER) Program" \
   --shared-review-dir "/Users/<you>/OneDrive - <Org>/Grant-Review"
 ```
 
-This writes:
-- `programs/<slug>/sources.json`
-- `programs/<slug>/guide.md`
-- updates local review copy in `programs/<slug>/review/`
-
-### Optional: watch mode (auto-collect when approved)
+To watch for approval automatically:
 
 ```bash
 python3 collect_review.py "NSF Faculty Early Career Development (CAREER) Program" \
@@ -224,233 +158,98 @@ python3 collect_review.py "NSF Faculty Early Career Development (CAREER) Program
   --watch --interval-seconds 300
 ```
 
-This polls every 5 minutes until `manifest.json` status becomes `approved`, then finalizes automatically.
+### Run the weekly update
 
----
-
-## Run the Weekly Update
-
-This is the core command you will use regularly:
+This is the command you will use most often once a program has a baseline guide:
 
 ```bash
 python3 pipeline.py programs/<slug>/guide.md \
-    --sources programs/<slug>/sources.json
+  --sources programs/<slug>/sources.json
 ```
 
-By default, citations + evidence output are enabled:
+Example:
 
 ```bash
-python3 pipeline.py programs/<slug>/guide.md \
-    --sources programs/<slug>/sources.json
-```
-
-**Examples:**
-
-```bash
-# NSF CAREER
 python3 pipeline.py programs/nsf_career/guide.md \
-    --sources programs/nsf_career/sources.json
-
-# NIH R15 (guide is a .docx file)
-python3 pipeline.py programs/nih_r15/NIH_R15_Sponsor_Guide_0325.docx \
-    --sources programs/nih_r15/sources.json
+  --sources programs/nsf_career/sources.json
 ```
 
-**What happens:**
+What happens during a run:
 
-| Step | What the tool does |
-|------|--------------------|
-| 1 | Re-scrape every URL in `sources.json` |
-| 2 | Compare each page against its last snapshot |
-| 3 | If anything changed, send the diff to Gemini |
-| 4 | Gemini rewrites only the affected sections |
-| 5 | Save the result to `output/sponsor_guide_updated.md`, `.docx`, and `.pdf` |
+1. Every source URL is scraped again.
+2. The new content is compared with the last snapshot.
+3. If anything changed, the diff is sent to Gemini.
+4. Gemini rewrites only the affected sections.
+5. Updated artifacts are written to `programs/<slug>/output/`.
 
-Pipeline also writes:
-- `output/sponsor_guide_evidence.json` (claim-to-source audit trail)
+The pipeline can also write an evidence file at `programs/<slug>/output/sponsor_guide_evidence.json`.
 
-To disable citations for a run:
+### Citation options
+
+Citations are enabled by default. Useful flags:
 
 ```bash
 python3 pipeline.py programs/<slug>/guide.md \
-    --sources programs/<slug>/sources.json \
-    --no-citations
+  --sources programs/<slug>/sources.json \
+  --no-citations
 ```
-
-To refresh citations even when website content has no changes:
 
 ```bash
 python3 pipeline.py programs/<slug>/guide.md \
-    --sources programs/<slug>/sources.json \
-    --refresh-citations
+  --sources programs/<slug>/sources.json \
+  --refresh-citations
 ```
-
-To refresh citations only (no scraping/diffing, useful behind restricted networks):
 
 ```bash
 python3 pipeline.py programs/<slug>/guide.md \
-    --sources programs/<slug>/sources.json \
-    --refresh-citations-only
+  --sources programs/<slug>/sources.json \
+  --refresh-citations-only
 ```
 
-### Citation guardrails (default behavior)
+The citation layer is guarded so it only uses approved source names and checks the generated references against the scraped text. If no website changes are found, the pipeline exits without overwriting the guide.
 
-The citation pass enforces:
-- citations can only reference approved source names from `sources.json`
-- each citation must pass lexical overlap against scraped source text
-- malformed model JSON is discarded safely (no blind citation injection)
+## Project Structure
 
-Citation format:
-- in-text markers (clickable): `[1](https://...)`
-- references: `[1]: [Source Label](https://...)`
-
-For `.docx` export, markdown links in references are converted to clickable hyperlinks.
-For `.pdf` export, the guide is rendered to a styled, print-ready PDF via `fpdf2` (pure Python, zero system libraries required).
-Citation hyperlinks are preserved and clickable in both formats.
-
-### Paragraph-level source targeting (ChatGPT/Perplexity style)
-
-Yes, partially. This tool now adds:
-- per-claim evidence metadata in `output/sponsor_guide_evidence.json`
-- best-effort deep links using browser text fragments (`#:~:text=...`) when possible
-
-Notes:
-- deep links depend on target website behavior and browser support
-- when deep links are not reliable, the tool falls back to the page URL
-
-If no changes are found, the tool prints "All sources unchanged" and exits — nothing is overwritten.
-
-Runtime files (`state.json`, `data/`) are stored inside the program folder and are git-ignored.
-
----
-
-## Human Review (Interactive)
-
-During bootstrap, the tool presents each discovered source one at a time with a numbered menu:
-
-```
-  [1/5]  NSF_CAREER_award_CAREER_Program_Overview
-           URL:      https://www.nsf.gov/funding/...
-           Sections: 2. Program Overview, 3. Key Dates
-
-    1  Approve this source
-    2  Reject this source
-    3  Edit the URL for this source
-    4  Add a new link (not in the list)
-    5  Show approved sources so far
-    6  Done — finish review
-
-  Your choice (1-6):
-```
-
-Just type a number and press Enter. No coding or JSON editing required.
-
-| Choice | What it does |
-|--------|-------------|
-| **1** | Keep this source as-is |
-| **2** | Remove this source from the list |
-| **3** | Replace the URL (the tool re-validates and re-detects sections automatically) |
-| **4** | Add a brand-new link you found yourself (see below) |
-| **5** | Print a summary of everything you've approved so far |
-| **6** | Stop reviewing early and keep what you've approved |
-
-After all sources are reviewed, you get one more prompt:
-
-```
-  Add another link before finishing? (y/n):
-```
-
----
-
-## Adding a New Link During Review
-
-Choose option **4** at any time during the review. The tool will ask:
-
-```
-  Paste the URL: https://grants.nih.gov/grants/guide/notice-files/NOT-OD-25-001.html
-  Checking URL ...
-  ✓ Reachable
-  Short label (e.g. 'Program FAQ'): Budget Policy Update
-  Detecting relevant guide sections ...
-  Auto-detected sections: 7. Budget, 8. Allowable Costs
-  ✓ Added: NIH_R01_Budget_Policy_Update
-```
-
-**What happens behind the scenes:**
-
-1. The tool checks the URL is reachable
-2. You give it a short label (just a few words — used for filenames)
-3. The tool scrapes the page and asks Gemini which guide sections it relates to
-4. The new link is added to the review queue
-
-You **do not** need to know the guide section names or edit any JSON files. Gemini figures out the section mapping automatically.
-
-> **Tip:** If Gemini can't detect sections (e.g. the page is sparse), that's fine. The weekly pipeline will re-attempt auto-detection when it runs.
-
----
-
-## Project Layout
-
-```
+```text
 CI-sponsor-guide-updater/
-├── bootstrap.py         ← Onboard a new program (discover → generate → review)
-├── pipeline.py          ← Weekly update runner (scrape → diff → update)
-├── cite.py              ← Guarded citation + footnote generator
-├── scraper.py           ← Fetch + clean web pages, manage snapshots
-├── differ.py            ← Extract meaningful text changes
-├── updater.py           ← LLM-powered guide rewriting + section classification
-├── discover.py          ← Find candidate source URLs via Gemini + Google Search
-├── generator.py         ← Generate a first-draft guide from scraped sources
-├── review.py            ← Interactive human review CLI
-├── review_async.py      ← Shared-folder async review package helpers
-├── collect_review.py    ← Collect approved async review package
-├── notify_review.py     ← Optional webhook notification helper
-├── program_utils.py     ← Shared slug helper
-├── requirements.txt     ← Python dependencies
-├── .env.example         ← Template for API key
-├── .env                 ← Your actual API key (git-ignored)
-└── programs/            ← One folder per grant program (see programs/README.md)
-    ├── nih_r15/
-    │   ├── sources.json
-    │   ├── guide.md or *.docx     (baseline guide)
-    │   ├── output/                (git-ignored: generated .md / .docx / .pdf / evidence)
-    │   ├── state.json             (git-ignored, runtime)
-    │   ├── data/                  (git-ignored, runtime)
-    │   ├── review/                (git-ignored, review artifacts)
-    │   └── review_packages/       (git-ignored, async package history)
-    └── nsf_career/
+├── bootstrap.py
+├── pipeline.py
+├── cite.py
+├── scraper.py
+├── differ.py
+├── updater.py
+├── discover.py
+├── generator.py
+├── review.py
+├── review_async.py
+├── collect_review.py
+├── notify_review.py
+├── program_utils.py
+├── requirements.txt
+├── .env.example
+└── programs/
+    └── <program-slug>/
         ├── sources.json
-        ├── guide.md
-        ├── output/                (git-ignored: pipeline outputs)
-        ├── state.json             (git-ignored, runtime)
-        ├── data/                  (git-ignored, runtime)
-        └── review/                (git-ignored, review artifacts)
-            ├── sources_pending.json
-            └── draft_guide.md
+        ├── guide.md or *.docx
+        ├── output/
+        ├── state.json
+        ├── data/
+        ├── review/
+        └── review_packages/
 ```
 
-Every program's files live together in one folder. With a normal `pipeline.py` invocation using `--sources programs/<slug>/sources.json`, generated files go to `programs/<slug>/output/` by default.
+`programs/README.md` explains which files are committed and which ones are runtime-only.
 
-**Git-ignored files** (not uploaded to the repository):
-- `.env` — API key
-- `programs/**/state.json` and `programs/**/data/` — runtime snapshots
-- `programs/**/review/` — review artifacts
-- `programs/**/review_packages/` — local async review package snapshots
-- `output/` — generated guides
-- `*.docx`, `*.doc` — Word files
+## Source Format
 
----
-
-## Sources Format
-
-Each program's `sources.json` is a simple list:
+Each program has a `sources.json` file with a list of approved source pages:
 
 ```json
 [
   {
     "name": "NIH_R15_Main_Page",
     "url": "https://grants.nih.gov/grants/funding/r15.htm",
-    "sections": ["2. Program Overview", "4. Eligibility"]
+    "sections": []
   },
   {
     "name": "NIH_R15_Due_Dates",
@@ -460,66 +259,61 @@ Each program's `sources.json` is a simple list:
 ]
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | Unique ID used for snapshot filenames |
-| `url` | Yes | The web page to scrape (HTML only, no PDFs) |
-| `sections` | No | Guide sections this source maps to. **Leave empty** — Gemini detects them automatically |
+Field summary:
 
----
+| Field | Required | Purpose |
+| --- | --- | --- |
+| `name` | Yes | Stable ID used for snapshot filenames |
+| `url` | Yes | The source page to scrape |
+| `sections` | No | Leave empty unless you want to specify guide sections manually |
 
-## Modules Reference
+## Outputs
 
-| Module | Purpose |
-|--------|---------|
-| `scraper.py` | Fetch web pages, strip HTML, generate content hashes, manage `state.json` snapshots |
-| `differ.py` | Compare old vs new text and produce a structured summary of additions/removals |
-| `updater.py` | Send guide + diff to Gemini, get back the updated guide. Also provides `classify_sections()` for auto-detecting which guide sections a page relates to |
-| `pipeline.py` | Orchestrate the weekly workflow: load sources → scrape → diff → LLM update → save output |
-| `cite.py` | Add guarded footnote citations and produce an evidence audit map |
-| `discover.py` | Use Gemini + Google Search grounding to find candidate source URLs for a program |
-| `generator.py` | Scrape discovered pages and ask Gemini to draft a first Sponsor Guide |
-| `review.py` | Menu-driven CLI for human experts to approve, reject, edit, and add source links |
-| `review_async.py` | Create/publish/load async review packages in a shared folder |
-| `collect_review.py` | Pull approved async edits from shared folder and finalize |
-| `notify_review.py` | Send optional Teams/generic webhook notifications for async review |
-| `program_utils.py` | Shared utility for generating consistent program slugs |
-| `bootstrap.py` | End-to-end orchestrator: discover → validate → generate → review → finalize |
+The pipeline writes generated files into `programs/<slug>/output/` by default.
 
----
+Common artifacts include:
+
+- `sponsor_guide_updated.md`
+- `sponsor_guide_updated.docx`
+- `sponsor_guide_updated.pdf`
+- `sponsor_guide_evidence.json`
+
+If you use the Streamlit Outputs page, it reads the same directory and lets you preview or download the available files.
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| `zsh: command not found: python` | Use `python3` instead (macOS default) |
-| `GEMINI_API_KEY is not set` | Make sure `.env` exists in the project root and contains `GEMINI_API_KEY=...` |
-| `.env` file exists but key not loaded | Confirm the file is not empty (`cat .env`). Re-copy from `.env.example` if needed |
-| `ModuleNotFoundError` | Run `pip3 install -r requirements.txt` |
-| URL marked "not reachable" during review | The page may be temporarily down or require special access. You can still add it — the pipeline will retry later |
-| Gemini can't detect sections | That's OK. The pipeline will try again on the next weekly run, or you can manually add `sections` to `sources.json` |
-| `404 NOT_FOUND` for model | The default model may have changed. Check `updater.py` for `DEFAULT_MODEL` and update if needed |
-| Citation run produced no references | Model output may have failed guardrails; check if source pages contain matching text and retry |
-| `collect_review.py` says "Review not approved yet" | Ask reviewer to set `manifest.json` status to `approved` in shared package |
-| Shared folder path with spaces fails | Wrap path in quotes, e.g. `--shared-review-dir "/Users/me/OneDrive - Org/Grant-Review"` |
-| Notification webhook failed | Verify `--notify-webhook-url` (or `REVIEW_NOTIFY_WEBHOOK_URL`) is valid and reachable |
-| Guide did not regenerate because no website changes | Run pipeline with `--refresh-citations` to force citation refresh on the current guide |
+| Problem | Fix |
+| --- | --- |
+| `zsh: command not found: python` | Use `python3` instead |
+| `GEMINI_API_KEY is not set` | Confirm `.env` exists in the project root and contains the key |
+| `.env` exists but the key is not loading | Re-copy from `.env.example` and check that the file is not empty |
+| `ModuleNotFoundError` | Run `pip3 install -r requirements.txt` again |
+| A URL is marked unreachable | The page may be down or protected; you can still review it later |
+| Gemini cannot detect sections | Leave `sections` empty and let the weekly pipeline try again |
+| `404 NOT_FOUND` for a model | Check `updater.py` for the current default model name |
+| `collect_review.py` says review is not approved | Ask the reviewer to set `manifest.json` to `approved` |
+| Shared-folder path breaks on spaces | Wrap the path in quotes |
+| Webhook notification fails | Verify the webhook URL is valid and reachable |
+| No changes were generated | The site may not have changed; try `--refresh-citations` if you only need citation updates |
 
----
+## Git Notes
 
-## Git / GitHub Notes
+Do not commit runtime artifacts such as:
 
-Files that are **not** committed (by `.gitignore`):
-- `.env` — API key
-- `programs/**/state.json`, `programs/**/data/`, `programs/**/review/`, `programs/**/review_packages/` — runtime artifacts
-- `output/` — generated guides
-- `*.docx`, `*.doc` — Word files
-- `*.pdf` — exported PDF guides
+- `.env`
+- `programs/**/state.json`
+- `programs/**/data/`
+- `programs/**/review/`
+- `programs/**/review_packages/`
+- `output/`
+- `*.docx`
+- `*.doc`
+- `*.pdf`
 
-To publish:
+To publish your changes:
 
 ```bash
-git status          # confirm sensitive files are not listed
+git status
 git add -A
 git commit -m "your commit message"
 git push origin main
