@@ -8,10 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import cite
 import generator
 import review
-import scraper
 from src.services.persistence_service import (
     hydrate_program,
     list_program_slugs as list_persisted_program_slugs,
@@ -390,6 +388,9 @@ def finalize_review(slug: str, include_unreviewed: bool = False) -> dict[str, An
 
 def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, Any]:
     """Generate the first guide draft (with citations) and write output files."""
+    import cite
+    import scraper
+
     try:
         hydrate_program(slug)
         program_dir = _program_dir(slug)
