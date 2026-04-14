@@ -101,8 +101,8 @@ init_session_state()
 apply_app_chrome()
 render_sidebar("pages/2_Review_Sources.py")
 render_page_header(
-    "Review and Approve Sources",
-    "Choose which links should support the sponsor guide, then finalize the approved set before generating the first draft.",
+    "Review Sources and Generate Guide",
+    "Approve the right links, finalize the source list, and generate the first draft with citations. Output files are ready to download as soon as the draft is created.",
     step_label="Step 2",
 )
 
@@ -328,7 +328,9 @@ if add_manual_clicked:
         if added.get("detail"):
             st.caption(added["detail"])
 
+st.divider()
 st.markdown("### Finalize the approved source list")
+st.write("Lock in the approved sources before generating the draft. Rejected sources will not be used.")
 with st.form("finalize_form"):
     include_unreviewed = st.checkbox(
         "Include unreviewed sources as approved",
@@ -348,22 +350,38 @@ if finalize_clicked:
         if result.get("detail"):
             st.caption(result["detail"])
 
+st.divider()
 st.markdown("### Generate the first draft")
-st.write("Generate the initial draft only after approved sources are finalized.")
+st.write("Generate the initial draft with citations from approved sources. Output files (markdown, Word, PDF) are created immediately and available on the **View Outputs** page.")
+with st.container(border=True):
+    draft_citations = st.checkbox("Enable citations", value=True, key="draft_citations")
 if st.button("Generate First Draft", use_container_width=True):
-    draft_result = generate_first_draft(selected_slug)
+    with st.status("Generating first draft with citations...", expanded=True) as status:
+        draft_result = generate_first_draft(selected_slug, with_citations=draft_citations)
+        if draft_result["ok"]:
+            status.update(label="Draft generated.", state="complete")
+        else:
+            status.update(label="Draft generation failed.", state="error")
     if draft_result["ok"]:
-        st.success("First draft generated from approved sources.")
+        citation_count = draft_result.get("citation_count", 0)
+        msg = "First draft generated from approved sources."
+        if citation_count:
+            msg += f" {citation_count} citation(s) added."
+        st.success(msg)
         st.code(draft_result["draft_path"])
         st.caption(f"Draft size: {draft_result['draft_chars']} characters")
+        if draft_result.get("output_dir"):
+            st.caption(f"Output files: `{draft_result['output_dir']}`")
+        st.page_link("pages/4_Outputs.py", label="Go to View Outputs to preview and download")
         render_storage_status(draft_result.get("storage"))
     else:
         st.error(draft_result["error"])
         if draft_result.get("detail"):
             st.caption(draft_result["detail"])
 
+st.divider()
 st.markdown("### Make the draft the working baseline")
-st.write("This explicit action makes the baseline `guide.md` available for Weekly Update.")
+st.write("Promote the draft to `guide.md` so the Weekly Update pipeline can use it as the starting point for future refreshes.")
 has_draft = draft_exists(selected_slug)
 if not has_draft:
     st.info("No draft found at `programs/<slug>/review/draft_guide.md` yet.")

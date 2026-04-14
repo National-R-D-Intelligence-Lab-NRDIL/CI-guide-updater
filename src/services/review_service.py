@@ -8,8 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import cite
 import generator
 import review
+import scraper
 from src.services.persistence_service import (
     hydrate_program,
     list_program_slugs as list_persisted_program_slugs,
@@ -386,8 +388,8 @@ def finalize_review(slug: str, include_unreviewed: bool = False) -> dict[str, An
         return {"ok": False, "error": "Failed to finalize review.", "detail": format_exception(exc)}
 
 
-def generate_first_draft(slug: str) -> dict[str, Any]:
-    """Generate the first guide draft from finalized approved sources."""
+def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, Any]:
+    """Generate the first guide draft (with citations) and write output files."""
     try:
         hydrate_program(slug)
         program_dir = _program_dir(slug)
@@ -401,11 +403,45 @@ def generate_first_draft(slug: str) -> dict[str, Any]:
 
         guide_md = generator.generate_guide(sources, slug)
         guide_md = _sanitize_generated_guide_markdown(guide_md)
+
+        evidence: list[dict] = []
+        citation_count = 0
+        if with_citations:
+            snapshot_map: dict[str, str] = {}
+            for src in sources:
+                try:
+                    snapshot_map[src["name"]] = scraper.fetch_and_clean_text(src["url"])
+                except Exception:
+                    snapshot_map[src["name"]] = ""
+            try:
+                cited_md, evidence = cite.add_citations(
+                    guide_md,
+                    sources=sources,
+                    snapshots_by_name=snapshot_map,
+                )
+                if evidence:
+                    guide_md = cited_md
+                    citation_count = len(evidence)
+            except Exception:
+                pass
+
         review_dir = _review_dir(slug)
         review_dir.mkdir(parents=True, exist_ok=True)
         draft_path = review_dir / "draft_guide.md"
         draft_path.write_text(guide_md, encoding="utf-8")
-        storage = persist_paths(slug, ["review/draft_guide.md"])
+
+        output_dir = program_dir / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        _write_output_files(guide_md, evidence, output_dir)
+
+        persist_files = ["review/draft_guide.md", "output/sponsor_guide_updated.md"]
+        if (output_dir / "sponsor_guide_updated.docx").exists():
+            persist_files.append("output/sponsor_guide_updated.docx")
+        if (output_dir / "sponsor_guide_updated.pdf").exists():
+            persist_files.append("output/sponsor_guide_updated.pdf")
+        if (output_dir / "sponsor_guide_evidence.json").exists():
+            persist_files.append("output/sponsor_guide_evidence.json")
+        storage = persist_paths(slug, persist_files)
 
         return {
             "ok": True,
@@ -413,12 +449,40 @@ def generate_first_draft(slug: str) -> dict[str, Any]:
             "sources_path": str(sources_path),
             "draft_path": str(draft_path),
             "draft_chars": len(guide_md),
+            "citation_count": citation_count,
+            "output_dir": str(output_dir),
             "storage": storage,
         }
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}
     except Exception as exc:  # pragma: no cover
         return {"ok": False, "error": "Failed to generate first draft.", "detail": format_exception(exc)}
+
+
+def _write_output_files(
+    guide_md: str, evidence: list[dict], output_dir: Path
+) -> None:
+    """Write md, docx, pdf, and evidence.json output files."""
+    import pipeline
+
+    md_path = output_dir / "sponsor_guide_updated.md"
+    md_path.write_text(guide_md, encoding="utf-8")
+
+    docx_path = output_dir / "sponsor_guide_updated.docx"
+    try:
+        pipeline._md_to_docx(guide_md, str(docx_path))
+    except Exception:
+        pass
+
+    try:
+        pdf_path = output_dir / "sponsor_guide_updated.pdf"
+        pipeline._md_to_pdf(guide_md, str(pdf_path))
+    except Exception:
+        pass
+
+    if evidence:
+        evidence_path = output_dir / "sponsor_guide_evidence.json"
+        evidence_path.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
 
 
 def promote_draft_to_baseline(slug: str) -> dict[str, Any]:

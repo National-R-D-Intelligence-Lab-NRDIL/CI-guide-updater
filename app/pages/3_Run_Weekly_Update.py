@@ -21,14 +21,14 @@ init_session_state()
 apply_app_chrome()
 render_sidebar("pages/3_Run_Weekly_Update.py")
 render_page_header(
-    "Run a Weekly Guide Update",
-    "Refresh an existing sponsor guide for a selected program. This step is for guides that already have a baseline in place.",
-    step_label="Step 3",
+    "Weekly Guide Update",
+    "Refresh an existing sponsor guide when source pages have changed. This is optional until you need to pick up website updates after the initial draft.",
+    step_label="Step 4",
 )
-st.info("Weekly Update requires baseline `programs/<slug>/guide.md` (promote a draft first).")
+st.info("Weekly Update requires a baseline `guide.md`. Generate the first draft and promote it in **Review & Generate** before running updates here.")
 
 st.markdown("### Choose the program to update")
-st.caption("Choose the workspace that will be updated by this run.")
+st.caption("Select a program that already has a promoted baseline guide.")
 selected_slug = select_program_form(list_program_slugs(), key_prefix="pipeline")
 if selected_slug:
     st.session_state["selected_program_slug"] = selected_slug

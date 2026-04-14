@@ -23,8 +23,8 @@ apply_app_chrome()
 render_sidebar("pages/4_Outputs.py")
 render_page_header(
     "Preview and Download Outputs",
-    "Open the latest guide artifacts for a program, preview the markdown, and download the files your team needs to share.",
-    step_label="Step 4",
+    "View the guide as soon as the first draft is generated. Preview the markdown and download output files your team needs to share.",
+    step_label="Step 3",
 )
 
 st.markdown("### Choose a program")

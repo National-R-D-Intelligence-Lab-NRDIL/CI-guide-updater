@@ -8,19 +8,24 @@ It is designed for non-developers to use in day-to-day work, while still staying
 
 1. Finds official source pages for a grant program.
 2. Helps reviewers approve, reject, or add links.
-3. Builds a baseline sponsor guide.
-4. Runs weekly updates to detect website changes.
-5. Exports updated `.md`, `.docx`, and `.pdf` files.
+3. Generates a first draft with citations and produces output files immediately.
+4. Exports `.md`, `.docx`, and `.pdf` files ready for download.
+5. Runs weekly updates to detect website changes and refresh the guide over time.
 
 ## Workflow
 
 ```text
 One-time setup per program
-  Discover -> Generate draft -> Review sources -> Finalize baseline
+  1. Create Program   → discover candidate source pages
+  2. Review & Generate → approve sources, generate first draft with citations, get outputs
+  3. View Outputs      → preview and download .md / .docx / .pdf right away
 
-Weekly update
-  Scrape -> Diff -> Update guide -> Export outputs
+Ongoing maintenance
+  4. Weekly Update     → re-scrape sources, diff, update guide, refresh outputs
+  5. Audit Evidence    → trace citations and diffs back to source pages
 ```
+
+Output files (markdown, Word, PDF) are available immediately after generating the first draft. You do not need to run the weekly update before you can see results.
 
 You do not need to manually map links to guide sections. The tool reads the source content and guide headings, then auto-detects the best section matches.
 
@@ -62,11 +67,15 @@ The Streamlit app gives you a guided workflow over the same files used by the CL
 
 Available pages:
 
-- Create New Program
-- Review Sources
-- Run Weekly Update
-- Outputs
-- Audit / Evidence
+| Step | Page | What it does |
+| --- | --- | --- |
+| 1 | Create New Program | Discover candidate source pages for a new grant program |
+| 2 | Review & Generate | Approve sources, generate the first draft with citations, and get output files |
+| 3 | View Outputs | Preview the guide and download `.md` / `.docx` / `.pdf` immediately |
+| 4 | Weekly Update | Refresh an existing guide when sponsor pages change (optional until needed) |
+| 5 | Audit Evidence | Trace diffs, citations, and evidence back to source pages |
+
+After Step 2, output files are ready. You do not need to run Weekly Update before viewing results.
 
 Use the UI if you want a more visual, step-by-step experience. It reads and writes the same artifacts under `programs/<slug>/`, so the CLI and UI stay in sync.
 
@@ -93,10 +102,17 @@ The result is stored in a program folder like:
 programs/nsf_career_award/
 ├── sources.json
 ├── guide.md
+├── output/
+│   ├── sponsor_guide_updated.md
+│   ├── sponsor_guide_updated.docx
+│   ├── sponsor_guide_updated.pdf
+│   └── sponsor_guide_evidence.json
 └── review/
     ├── sources_pending.json
     └── draft_guide.md
 ```
+
+The `output/` directory is populated as soon as you generate the first draft.
 
 ### Review sources interactively
 
@@ -160,7 +176,7 @@ python3 collect_review.py "NSF Faculty Early Career Development (CAREER) Program
 
 ### Run the weekly update
 
-This is the command you will use most often once a program has a baseline guide:
+Use this command to refresh an existing guide after sponsor pages have changed. This is not needed for the initial draft — output files are already produced during generation.
 
 ```bash
 python3 pipeline.py programs/<slug>/guide.md \
@@ -186,7 +202,7 @@ The pipeline can also write an evidence file at `programs/<slug>/output/sponsor_
 
 ### Citation options
 
-Citations are enabled by default. Useful flags:
+Citations are added during both the first draft generation and weekly updates. They are enabled by default. Useful CLI flags for the weekly pipeline:
 
 ```bash
 python3 pipeline.py programs/<slug>/guide.md \
@@ -269,16 +285,16 @@ Field summary:
 
 ## Outputs
 
-The pipeline writes generated files into `programs/<slug>/output/` by default.
+Output files are written to `programs/<slug>/output/` during both the first draft generation (Step 2) and the weekly update pipeline.
 
 Common artifacts include:
 
 - `sponsor_guide_updated.md`
 - `sponsor_guide_updated.docx`
 - `sponsor_guide_updated.pdf`
-- `sponsor_guide_evidence.json`
+- `sponsor_guide_evidence.json` (citation evidence, only when citations are enabled)
 
-If you use the Streamlit Outputs page, it reads the same directory and lets you preview or download the available files.
+The Streamlit Outputs page reads from this directory and lets you preview or download the available files. If no output directory exists yet, it falls back to showing the draft or baseline guide.
 
 ## Troubleshooting
 

@@ -29,13 +29,21 @@ def load_outputs(program_slug: str) -> dict[str, Any]:
         baseline_path = program_dir / "guide.md"
         draft_path = program_dir / "review" / "draft_guide.md"
         if not output_dir.exists():
+            markdown_content = ""
+            note = "No output files yet. Generate the first draft in Review Sources."
+            if baseline_path.exists():
+                markdown_content = baseline_path.read_text(encoding="utf-8")
+                note = "Showing baseline guide. Run Weekly Update for incremental updates."
+            elif draft_path.exists():
+                markdown_content = draft_path.read_text(encoding="utf-8")
+                note = "Showing draft guide. Promote to baseline or run Weekly Update for output artifacts."
             return {
                 "ok": True,
                 "program_slug": program_slug,
                 "output_dir": str(output_dir),
                 "artifacts": [],
-                "markdown_content": "",
-                "note": "Outputs have not been generated yet. Run Weekly Update to create artifacts.",
+                "markdown_content": markdown_content,
+                "note": note,
                 "baseline_path": str(baseline_path) if baseline_path.exists() else "",
                 "draft_path": str(draft_path) if draft_path.exists() else "",
                 "remote_program_url": program_remote_url(program_slug),

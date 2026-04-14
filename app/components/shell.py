@@ -22,19 +22,19 @@ WORKFLOW_STEPS = [
         "description": "Create a new workspace and discover candidate sources.",
     },
     {
-        "label": "2. Review Sources",
+        "label": "2. Review & Generate",
         "path": "pages/2_Review_Sources.py",
-        "description": "Approve the right links before generating a draft.",
+        "description": "Approve sources, generate the first draft with citations, and get output files.",
     },
     {
-        "label": "3. Run Weekly Update",
-        "path": "pages/3_Run_Weekly_Update.py",
-        "description": "Refresh an existing guide with the latest source changes.",
-    },
-    {
-        "label": "4. View Outputs",
+        "label": "3. View Outputs",
         "path": "pages/4_Outputs.py",
         "description": "Preview and download the latest guide files.",
+    },
+    {
+        "label": "4. Weekly Update",
+        "path": "pages/3_Run_Weekly_Update.py",
+        "description": "Refresh an existing guide when source pages change.",
     },
     {
         "label": "5. Audit Evidence",
@@ -178,9 +178,10 @@ def render_sidebar(current_path: str) -> None:
             st.caption(step["description"])
 
         st.markdown("### Tips")
-        st.caption("New program? Start at Set Up Program, then move to Review Sources.")
-        st.caption("Updating an existing guide? Go straight to Run Weekly Update.")
-        st.caption("Need files or proof? Use View Outputs and Audit Evidence.")
+        st.caption("New program? Start at Set Up Program, then Review & Generate to get your first guide with citations.")
+        st.caption("Ready to download? Go to View Outputs right after generating the draft.")
+        st.caption("Keeping a guide current? Use Weekly Update when sponsor pages change.")
+        st.caption("Need proof? Use Audit Evidence to trace citations back to sources.")
 
 
 def render_page_header(title: str, summary: str, step_label: str = "") -> None:

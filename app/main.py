@@ -41,7 +41,7 @@ def main() -> None:
     with overview_col:
         st.markdown("### How the workflow works")
         st.write(
-            "The process is designed to move left to right: set up a program, approve sources, generate or update the guide, then review outputs and evidence."
+            "The process is designed to move left to right: set up a program, approve sources and generate the first draft with citations, then view outputs. Use Weekly Update later when sponsor pages change."
         )
 
         st.markdown("### Workflow map")
@@ -55,8 +55,9 @@ def main() -> None:
         st.markdown("### Start here")
         st.info("Choose the path that matches the job you need to do today.")
         st.page_link("pages/1_Create_New_Program.py", label="Create a new guide workspace")
-        st.page_link("pages/3_Run_Weekly_Update.py", label="Update an existing guide")
-        st.page_link("pages/4_Outputs.py", label="Open outputs and downloads")
+        st.page_link("pages/2_Review_Sources.py", label="Review sources and generate first draft")
+        st.page_link("pages/4_Outputs.py", label="Preview and download outputs")
+        st.page_link("pages/3_Run_Weekly_Update.py", label="Refresh an existing guide (weekly update)")
 
         selected_slug = str(st.session_state.get("selected_program_slug", "")).strip()
         if selected_slug:
@@ -71,8 +72,9 @@ def main() -> None:
     render_next_steps(
         [
             "Use Set Up Program for a brand-new funding opportunity.",
-            "Use Review Sources to approve links before creating the first draft.",
-            "Use Weekly Update when a baseline guide already exists and needs a refresh.",
+            "Use Review & Generate to approve links, create the first draft with citations, and get output files.",
+            "Use View Outputs to preview and download the guide right after generation.",
+            "Use Weekly Update only when sponsor pages have changed and you need to refresh an existing guide.",
         ]
     )
 
