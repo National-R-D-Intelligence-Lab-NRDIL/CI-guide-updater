@@ -359,18 +359,12 @@ st.write("Generate the initial draft with citations from approved sources. Outpu
 with st.container(border=True):
     draft_citations = st.checkbox("Enable citations", value=True, key="draft_citations")
 if st.button("Generate First Draft", use_container_width=True):
-    try:
-        with st.status("Generating first draft with citations...", expanded=True) as status:
-            draft_result = generate_first_draft(selected_slug, with_citations=draft_citations)
-            if draft_result["ok"]:
-                status.update(label="Draft generated.", state="complete")
-            else:
-                status.update(label="Draft generation failed.", state="error")
-    except Exception as _draft_exc:
-        import traceback as _tb
-        st.error(f"Unexpected error: {type(_draft_exc).__name__}: {_draft_exc}")
-        st.code(_tb.format_exc())
-        st.stop()
+    with st.status("Generating first draft with citations...", expanded=True) as status:
+        draft_result = generate_first_draft(selected_slug, with_citations=draft_citations)
+        if draft_result["ok"]:
+            status.update(label="Draft generated.", state="complete")
+        else:
+            status.update(label="Draft generation failed.", state="error")
     if draft_result["ok"]:
         citation_count = draft_result.get("citation_count", 0)
         msg = "First draft generated from approved sources."
