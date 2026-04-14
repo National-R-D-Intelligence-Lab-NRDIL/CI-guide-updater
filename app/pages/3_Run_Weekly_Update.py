@@ -40,35 +40,43 @@ if not selected_slug:
     st.stop()
 
 st.divider()
-st.markdown("### Update options")
-with st.container(border=True):
-    with_citations = st.checkbox("Enable citations", value=True)
+st.markdown("### What do you want to update?")
+update_mode = st.radio(
+    "Choose an update mode",
+    options=["full", "citations_only"],
+    format_func=lambda x: {
+        "full": "Full update — check sources for changes and update the guide",
+        "citations_only": "Refresh citations only — regenerate citations without re-scraping sources",
+    }[x],
+    index=0,
+    label_visibility="collapsed",
+)
+
+refresh_citations_only = update_mode == "citations_only"
+with_citations = True
+
+if not refresh_citations_only:
     refresh_citations = st.checkbox(
-        "Force citation refresh even if sources did not change",
+        "Also refresh citations even if no source changes are found",
         value=False,
     )
-    refresh_citations_only = st.checkbox(
-        "Citation refresh only (skip scrape and diff)",
-        value=False,
-    )
+else:
+    refresh_citations = True
 
 st.divider()
 st.markdown("### Review before running")
 with st.container(border=True):
-    st.warning("This action will run the weekly update pipeline for the selected workspace.")
+    mode_label = (
+        "refresh citations on the current guide"
+        if refresh_citations_only
+        else "check all sources for updates and regenerate the guide"
+    )
+    st.warning(f"This will **{mode_label}** for the selected workspace.")
     confirm = st.checkbox(
         "I confirm I want to run the update now",
         value=False,
         help="Use this guard to avoid accidental or repeated runs.",
     )
-
-st.caption(f"Selected program: `{selected_slug}`")
-st.caption(
-    "Settings: "
-    f"citations={'on' if with_citations else 'off'}, "
-    f"force_refresh={'yes' if refresh_citations else 'no'}, "
-    f"mode={'citation refresh only' if refresh_citations_only else 'full weekly update'}."
-)
 
 st.divider()
 run_clicked = st.button(
