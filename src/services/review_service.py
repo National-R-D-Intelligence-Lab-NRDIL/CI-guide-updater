@@ -10,15 +10,17 @@ from typing import Any
 
 import generator
 import review
+from src.services.persistence_service import (
+    hydrate_program,
+    list_program_slugs as list_persisted_program_slugs,
+    persist_paths,
+)
 from src.utils.errors import UserFacingError, format_exception
 
 
 def list_program_slugs() -> list[str]:
     """Return program directory slugs under `programs/`."""
-    programs_root = Path("programs")
-    if not programs_root.exists():
-        return []
-    return sorted([p.name for p in programs_root.iterdir() if p.is_dir()])
+    return list_persisted_program_slugs()
 
 
 def _metadata_path(slug: str) -> Path:
@@ -58,6 +60,7 @@ def _display_name_from_slug(slug: str) -> str:
 def get_program_display_name(slug: str) -> str:
     """Return the most readable label we know for a program slug."""
     try:
+        hydrate_program(slug)
         metadata_file = _metadata_path(slug)
         if metadata_file.exists():
             metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
@@ -73,15 +76,8 @@ def get_program_display_name(slug: str) -> str:
 
 def list_program_records() -> list[dict[str, str]]:
     """Return program directories with readable labels for UI pickers."""
-    programs_root = Path("programs")
-    if not programs_root.exists():
-        return []
-
     records: list[dict[str, str]] = []
-    for path in programs_root.iterdir():
-        if not path.is_dir():
-            continue
-        slug = path.name
+    for slug in list_program_slugs():
         display_name = get_program_display_name(slug)
         records.append(
             {
@@ -117,6 +113,7 @@ def _baseline_guide_path(slug: str) -> Path:
 
 def draft_exists(slug: str) -> bool:
     """Return True when a review draft exists for a program."""
+    hydrate_program(slug)
     return _draft_guide_path(slug).exists()
 
 
@@ -219,6 +216,7 @@ def add_manual_source(
 ) -> dict[str, Any]:
     """Persist a manually added source in a review sidecar JSON file."""
     try:
+        hydrate_program(slug)
         clean_url = url.strip()
         if not clean_url:
             raise UserFacingError("URL is required.")
@@ -253,7 +251,8 @@ def add_manual_source(
         }
         manual_sources.append(entry)
         manual_path.write_text(json.dumps(manual_sources, indent=2), encoding="utf-8")
-        return {"ok": True, "entry": entry, "path": str(manual_path)}
+        storage = persist_paths(slug, ["review/manual_sources.json"])
+        return {"ok": True, "entry": entry, "path": str(manual_path), "storage": storage}
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}
     except Exception as exc:  # pragma: no cover
@@ -263,6 +262,7 @@ def add_manual_source(
 def load_review_context(slug: str) -> dict[str, Any]:
     """Load candidate sources plus any saved review decisions for a program."""
     try:
+        hydrate_program(slug)
         pending_path = _pending_sources_path(slug)
         if pending_path.exists():
             sources = json.loads(pending_path.read_text(encoding="utf-8"))
@@ -325,6 +325,7 @@ def load_review_context(slug: str) -> dict[str, Any]:
 def save_review_decision(slug: str, source_name: str, status: str, notes: str = "") -> dict[str, Any]:
     """Save approve/reject decision metadata for one source."""
     try:
+        hydrate_program(slug)
         if status not in {"approved", "rejected", "unreviewed", "pending_manual_review"}:
             raise UserFacingError("Invalid review status.")
 
@@ -338,8 +339,8 @@ def save_review_decision(slug: str, source_name: str, status: str, notes: str = 
 
         decisions[source_name] = {"status": status, "notes": notes.strip()}
         decisions_file.write_text(json.dumps(decisions, indent=2), encoding="utf-8")
-
-        return {"ok": True, "path": str(decisions_file)}
+        storage = persist_paths(slug, ["review/review_decisions.json"])
+        return {"ok": True, "path": str(decisions_file), "storage": storage}
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}
     except Exception as exc:  # pragma: no cover
@@ -349,6 +350,7 @@ def save_review_decision(slug: str, source_name: str, status: str, notes: str = 
 def finalize_review(slug: str, include_unreviewed: bool = False) -> dict[str, Any]:
     """Finalize review decisions into program `sources.json` only."""
     try:
+        hydrate_program(slug)
         context = load_review_context(slug)
         if not context["ok"]:
             return context
@@ -370,11 +372,13 @@ def finalize_review(slug: str, include_unreviewed: bool = False) -> dict[str, An
         program_dir.mkdir(parents=True, exist_ok=True)
         sources_out = program_dir / "sources.json"
         sources_out.write_text(json.dumps(approved_sources, indent=2), encoding="utf-8")
+        storage = persist_paths(slug, ["sources.json"])
         return {
             "ok": True,
             "approved_count": len(approved_sources),
             "sources_out": str(sources_out),
             "guide_out": "",
+            "storage": storage,
         }
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}
@@ -385,6 +389,7 @@ def finalize_review(slug: str, include_unreviewed: bool = False) -> dict[str, An
 def generate_first_draft(slug: str) -> dict[str, Any]:
     """Generate the first guide draft from finalized approved sources."""
     try:
+        hydrate_program(slug)
         program_dir = _program_dir(slug)
         sources_path = program_dir / "sources.json"
         if not sources_path.exists():
@@ -400,6 +405,7 @@ def generate_first_draft(slug: str) -> dict[str, Any]:
         review_dir.mkdir(parents=True, exist_ok=True)
         draft_path = review_dir / "draft_guide.md"
         draft_path.write_text(guide_md, encoding="utf-8")
+        storage = persist_paths(slug, ["review/draft_guide.md"])
 
         return {
             "ok": True,
@@ -407,6 +413,7 @@ def generate_first_draft(slug: str) -> dict[str, Any]:
             "sources_path": str(sources_path),
             "draft_path": str(draft_path),
             "draft_chars": len(guide_md),
+            "storage": storage,
         }
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}
@@ -417,6 +424,7 @@ def generate_first_draft(slug: str) -> dict[str, Any]:
 def promote_draft_to_baseline(slug: str) -> dict[str, Any]:
     """Promote review draft markdown to program baseline guide.md."""
     try:
+        hydrate_program(slug)
         draft_path = _draft_guide_path(slug)
         if not draft_path.exists():
             raise UserFacingError(
@@ -427,6 +435,7 @@ def promote_draft_to_baseline(slug: str) -> dict[str, Any]:
         baseline_path.parent.mkdir(parents=True, exist_ok=True)
         content = _sanitize_generated_guide_markdown(draft_path.read_text(encoding="utf-8"))
         baseline_path.write_text(content, encoding="utf-8")
+        storage = persist_paths(slug, ["guide.md"])
 
         return {
             "ok": True,
@@ -434,6 +443,7 @@ def promote_draft_to_baseline(slug: str) -> dict[str, Any]:
             "baseline_path": str(baseline_path),
             "chars_copied": len(content),
             "message": "Draft promoted to baseline guide.md.",
+            "storage": storage,
         }
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}

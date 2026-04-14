@@ -44,6 +44,8 @@ if not result["ok"]:
 
 st.markdown("### Available files")
 st.write(f"**Output directory:** `{result['output_dir']}`")
+if result.get("remote_program_url"):
+    st.markdown(f"[Open persisted program files]({result['remote_program_url']})")
 if result.get("note"):
     st.info(result["note"])
 if result.get("baseline_path"):

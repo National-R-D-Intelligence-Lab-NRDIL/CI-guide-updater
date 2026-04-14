@@ -10,6 +10,7 @@ import streamlit as st
 
 from app.components.shell import apply_app_chrome, render_page_header, render_sidebar
 from app.components.forms import select_program_form
+from app.components.status import render_storage_status
 from app.state.session import init_session_state
 from src.services.pipeline_service import run_weekly_update
 from src.services.review_service import get_program_display_name, list_program_slugs
@@ -113,5 +114,6 @@ if run_clicked:
         for artifact in result["artifacts"]:
             st.code(artifact)
 
+    render_storage_status(result.get("storage"))
     with st.expander("Execution logs", expanded=False):
         st.code(result["logs"] or "(no logs)")

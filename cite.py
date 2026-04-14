@@ -8,13 +8,13 @@ enforcing guardrails:
 """
 
 import json
-import os
 import re
 from urllib.parse import quote
 
 from openai import OpenAI
 
 import updater
+from src.utils.secrets import get_secret
 
 
 def _tokenize(text: str) -> set[str]:
@@ -151,7 +151,7 @@ def add_citations(
             - cited markdown
             - evidence list suitable for JSON audit export
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = get_secret("GEMINI_API_KEY")
     if not api_key:
         return guide_md, []
 

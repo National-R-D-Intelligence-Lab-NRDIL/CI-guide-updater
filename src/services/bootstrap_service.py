@@ -10,6 +10,7 @@ import discover
 import notify_review
 import review_async
 from program_utils import make_slug
+from src.services.persistence_service import persist_program
 from src.utils.errors import UserFacingError, format_exception
 from src.utils.validation import ensure_path_exists, require_non_empty
 
@@ -105,6 +106,7 @@ def create_new_program(
         else:
             next_steps.append("After approval, generate the first draft from approved sources.")
 
+        storage = persist_program(slug)
         return {
             "ok": True,
             "program": program_name,
@@ -118,6 +120,7 @@ def create_new_program(
             "next_steps": next_steps,
             "candidates": validated_candidates,
             "async_details": async_details,
+            "storage": storage,
         }
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}

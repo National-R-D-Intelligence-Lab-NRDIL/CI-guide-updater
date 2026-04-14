@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from src.services.persistence_service import hydrate_program, program_remote_url
 from src.utils.errors import format_exception
 
 
@@ -22,6 +23,7 @@ def _metadata(path: Path) -> dict[str, Any]:
 def load_outputs(program_slug: str) -> dict[str, Any]:
     """Load output artifact metadata and markdown preview content for a program."""
     try:
+        hydrate_program(program_slug)
         program_dir = Path("programs") / program_slug
         output_dir = program_dir / "output"
         baseline_path = program_dir / "guide.md"
@@ -36,6 +38,7 @@ def load_outputs(program_slug: str) -> dict[str, Any]:
                 "note": "Outputs have not been generated yet. Run Weekly Update to create artifacts.",
                 "baseline_path": str(baseline_path) if baseline_path.exists() else "",
                 "draft_path": str(draft_path) if draft_path.exists() else "",
+                "remote_program_url": program_remote_url(program_slug),
             }
 
         artifacts = []
@@ -66,6 +69,7 @@ def load_outputs(program_slug: str) -> dict[str, Any]:
             "note": "",
             "baseline_path": str(baseline_path) if baseline_path.exists() else "",
             "draft_path": str(draft_path) if draft_path.exists() else "",
+            "remote_program_url": program_remote_url(program_slug),
         }
     except Exception as exc:  # pragma: no cover
         return {"ok": False, "error": "Failed to load outputs.", "detail": format_exception(exc)}

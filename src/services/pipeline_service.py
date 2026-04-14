@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pipeline
+from src.services.persistence_service import hydrate_program, persist_program
 from src.utils.errors import UserFacingError, format_exception
 from src.utils.logging_utils import capture_logs
 
@@ -29,6 +30,7 @@ def run_weekly_update(
 ) -> dict[str, Any]:
     """Run existing pipeline for a program and return UI-friendly summary data."""
     try:
+        hydrate_program(program_slug)
         program_dir = Path("programs") / program_slug
         sources_path = program_dir / "sources.json"
         if not sources_path.exists():
@@ -70,6 +72,7 @@ def run_weekly_update(
             if path.exists():
                 artifacts.append(str(path))
 
+        storage = persist_program(program_slug)
         return {
             "ok": True,
             "updated": bool(ok),
@@ -82,6 +85,7 @@ def run_weekly_update(
             "changed_sections_count": changed_sections,
             "artifacts": artifacts,
             "logs": logs,
+            "storage": storage,
         }
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}

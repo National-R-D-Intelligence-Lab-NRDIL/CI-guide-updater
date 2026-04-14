@@ -8,11 +8,12 @@ Configured for Google Gemini via its OpenAI-compatible endpoint.  Set
 ``GEMINI_API_KEY`` in the environment (or a ``.env`` file) before use.
 """
 
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIStatusError, OpenAI
+
+from src.utils.secrets import get_secret
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(_PROJECT_ROOT / ".env")
@@ -73,7 +74,7 @@ def update_guide(
         openai.APIConnectionError: On network-level failures.
         openai.APIStatusError: On non-2xx API responses (rate limits, auth, etc.).
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = get_secret("GEMINI_API_KEY")
     if not api_key:
         raise EnvironmentError(
             "GEMINI_API_KEY is not set. Add it to .env in the project root "
@@ -126,7 +127,7 @@ def classify_sections(
     heading_list = "\n".join(f"- {h.strip()}" for h in headings)
     snippet = page_text[:3000]
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = get_secret("GEMINI_API_KEY")
     if not api_key:
         return []
 

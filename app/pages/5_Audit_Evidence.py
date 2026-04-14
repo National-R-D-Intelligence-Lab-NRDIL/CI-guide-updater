@@ -41,6 +41,9 @@ if not result["ok"]:
         st.caption(result["detail"])
     st.stop()
 
+if result.get("remote_program_url"):
+    st.markdown(f"[Open persisted program files]({result['remote_program_url']})")
+
 tabs = st.tabs(["Guide Diff", "Citations", "Evidence Map"])
 
 with tabs[0]:

@@ -5,7 +5,6 @@ for a given grant program, then validates and classifies each URL.
 """
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -14,6 +13,8 @@ import requests
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+
+from src.utils.secrets import get_secret
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(_PROJECT_ROOT / ".env")
@@ -102,7 +103,7 @@ def discover_sources(program: str) -> list[dict]:
         List of dicts with ``url``, ``label``, ``sections``, and
         ``grounded`` (whether the URL came from search results).
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = get_secret("GEMINI_API_KEY")
     if not api_key:
         raise EnvironmentError("GEMINI_API_KEY is not set.")
 

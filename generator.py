@@ -4,13 +4,13 @@ Scrapes all discovered source pages and asks Gemini to produce a
 first-draft Sponsor Guide in markdown.
 """
 
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
 
 import scraper
+from src.utils.secrets import get_secret
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(_PROJECT_ROOT / ".env")
@@ -61,7 +61,7 @@ def generate_guide(
     Returns:
         Markdown string of the generated guide.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = get_secret("GEMINI_API_KEY")
     if not api_key:
         raise EnvironmentError("GEMINI_API_KEY is not set.")
 

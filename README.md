@@ -287,7 +287,11 @@ If you use the Streamlit Outputs page, it reads the same directory and lets you 
 | `zsh: command not found: python` | Use `python3` instead |
 | `GEMINI_API_KEY is not set` | Confirm `.env` exists in the project root and contains the key |
 | `.env` exists but the key is not loading | Re-copy from `.env.example` and check that the file is not empty |
-| `ModuleNotFoundError` | Run `pip3 install -r requirements.txt` again |
+| `ModuleNotFoundError` | Make sure you installed `requirements.txt` and kept `setup.py` plus `-e .` in place |
+| `No module named 'app'` on Streamlit Cloud | Set the app entrypoint to `app/main.py` and redeploy after installing dependencies |
+| `GEMINI_API_KEY is not set` in Streamlit Cloud | Add the key under **App settings > Secrets** so the deployed app can read it |
+| Remote persistence says sync failed | Check `RUNTIME_STORAGE_*` secrets, token scopes, and repository write access |
+| Files disappear after Cloud restart | Enable GitHub runtime persistence or move artifacts to durable external storage |
 | A URL is marked unreachable | The page may be down or protected; you can still review it later |
 | Gemini cannot detect sections | Leave `sections` empty and let the weekly pipeline try again |
 | `404 NOT_FOUND` for a model | Check `updater.py` for the current default model name |

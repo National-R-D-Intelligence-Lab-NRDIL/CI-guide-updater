@@ -16,6 +16,7 @@ from app.components.shell import (
     render_sidebar,
 )
 from app.components.forms import select_program_form
+from app.components.status import render_storage_status
 from app.components.tables import show_table
 from app.state.session import init_session_state
 from src.services.review_service import (
@@ -118,6 +119,9 @@ if not selected_slug:
 manual_source_feedback = str(st.session_state.pop("manual_source_feedback", "")).strip()
 if manual_source_feedback:
     st.success(manual_source_feedback)
+review_feedback = str(st.session_state.pop("review_feedback", "")).strip()
+if review_feedback:
+    st.success(review_feedback)
 
 context = load_review_context(selected_slug)
 if not context["ok"]:
@@ -245,6 +249,12 @@ if rows:
                         notes=notes,
                     )
                     if saved["ok"]:
+                        storage = saved.get("storage", {})
+                        storage_message = str(storage.get("message", "")).strip()
+                        feedback = "Decision saved. Moved to the next source."
+                        if storage_message:
+                            feedback = f"{feedback} {storage_message}"
+                        st.session_state["review_feedback"] = feedback
                         next_name = _next_source_name(
                             [
                                 {
@@ -259,7 +269,6 @@ if rows:
                             st.session_state[next_source_key] = next_name
                         else:
                             st.session_state.pop(next_source_key, None)
-                        st.success("Decision saved. Moved to the next source.")
                         st.rerun()
                     else:
                         st.error(saved["error"])
@@ -291,6 +300,11 @@ if add_manual_clicked:
     )
     if added["ok"]:
         st.session_state["manual_source_feedback"] = "Manual source added for review."
+        storage = added.get("storage")
+        if storage:
+            storage_message = str(storage.get("message", "")).strip()
+            if storage_message:
+                st.session_state["manual_source_feedback"] += f" {storage_message}"
         st.rerun()
     else:
         st.error(added["error"])
@@ -311,6 +325,7 @@ if finalize_clicked:
     if result["ok"]:
         st.success(f"Finalized {result['approved_count']} sources.")
         st.code(result["sources_out"])
+        render_storage_status(result.get("storage"))
     else:
         st.error(result["error"])
         if result.get("detail"):
@@ -324,6 +339,7 @@ if st.button("Generate First Draft", use_container_width=True):
         st.success("First draft generated from approved sources.")
         st.code(draft_result["draft_path"])
         st.caption(f"Draft size: {draft_result['draft_chars']} characters")
+        render_storage_status(draft_result.get("storage"))
     else:
         st.error(draft_result["error"])
         if draft_result.get("detail"):
@@ -345,6 +361,7 @@ if promote_clicked:
         st.success(promote_result["message"])
         st.code(promote_result["baseline_path"])
         st.caption(f"Characters copied: {promote_result['chars_copied']}")
+        render_storage_status(promote_result.get("storage"))
     else:
         st.error(promote_result["error"])
         if promote_result.get("detail"):

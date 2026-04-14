@@ -14,6 +14,7 @@ from app.components.shell import (
     render_page_header,
     render_sidebar,
 )
+from app.components.status import render_storage_status
 from app.components.tables import show_table
 from app.state.session import init_session_state
 from src.services.bootstrap_service import create_new_program
@@ -135,5 +136,6 @@ if submitted:
             st.subheader("Async Review Package")
             st.json(result["async_details"])
 
+        render_storage_status(result.get("storage"))
         render_next_steps(result["next_steps"])
         st.info("This step does not generate a guide draft. Continue to Review Sources to authorize links first.")

@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from src.services.persistence_service import hydrate_program, program_remote_url
 from src.utils.errors import format_exception
 
 
@@ -17,6 +18,7 @@ _CITATION_RE = re.compile(r"\[(?:\[(\d+)\]|(\d+))\]\((https?://[^)\s]+)\)")
 def load_audit_data(program_slug: str) -> dict[str, Any]:
     """Load guide diffs, citation links, and evidence map for one program."""
     try:
+        hydrate_program(program_slug)
         program_dir = Path("programs") / program_slug
         baseline_path = program_dir / "guide.md"
         updated_path = program_dir / "output" / "sponsor_guide_updated.md"
@@ -54,6 +56,7 @@ def load_audit_data(program_slug: str) -> dict[str, Any]:
             "baseline_path": str(baseline_path),
             "updated_path": str(updated_path),
             "evidence_path": str(evidence_path),
+            "remote_program_url": program_remote_url(program_slug),
         }
     except Exception as exc:  # pragma: no cover
         return {"ok": False, "error": "Failed to load audit artifacts.", "detail": format_exception(exc)}
