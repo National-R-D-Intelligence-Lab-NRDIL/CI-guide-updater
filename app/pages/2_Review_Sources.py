@@ -238,7 +238,7 @@ if rows:
                 if selected_row.get("created_at"):
                     st.write(f"**Added at:** `{selected_row['created_at']}`")
 
-                with st.form("decision_form"):
+                with st.form(f"decision_form_{source_name}"):
                     options = ["approved", "rejected", "unreviewed"]
                     if selected_row.get("source_origin") == "manual":
                         options.append("pending_manual_review")
