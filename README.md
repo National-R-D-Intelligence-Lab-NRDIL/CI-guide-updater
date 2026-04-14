@@ -290,7 +290,8 @@ If you use the Streamlit Outputs page, it reads the same directory and lets you 
 | `ModuleNotFoundError` | Make sure you installed `requirements.txt` and kept `setup.py` plus `-e .` in place |
 | `No module named 'app'` on Streamlit Cloud | Set the app entrypoint to `app/main.py` and redeploy after installing dependencies |
 | `GEMINI_API_KEY is not set` in Streamlit Cloud | Add the key under **App settings > Secrets** so the deployed app can read it |
-| Remote persistence says sync failed | Check `RUNTIME_STORAGE_*` secrets, token scopes, and repository write access |
+| Remote persistence says sync failed | Check `RUNTIME_STORAGE_*` secrets, token scopes, repository name, and repository write access |
+| `Unable to read repository metadata: 404` | The runtime repo name is wrong or the token cannot access that repo |
 | Files disappear after Cloud restart | Enable GitHub runtime persistence or move artifacts to durable external storage |
 | A URL is marked unreachable | The page may be down or protected; you can still review it later |
 | Gemini cannot detect sections | Leave `sections` empty and let the weekly pipeline try again |

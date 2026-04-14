@@ -93,6 +93,61 @@ def _extract_response_text(response) -> str:
     )
 
 
+def _parse_candidates_json(raw: str) -> list[dict]:
+    """Parse model output into a candidate list with clear errors.
+
+    Gemini occasionally returns empty text or a short explanation instead of a
+    strict JSON payload. We keep parsing defensive so callers get a meaningful
+    message instead of a low-level JSONDecodeError.
+    """
+    cleaned = raw.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    if not cleaned:
+        raise RuntimeError(
+            "Source discovery returned an empty response. "
+            "Retry in a moment, or add sources manually in Review Sources."
+        )
+
+    # Try to recover a JSON array if extra explanation surrounds the payload.
+    if not cleaned.startswith("["):
+        array_match = re.search(r"\[[\s\S]*\]", cleaned)
+        if array_match:
+            cleaned = array_match.group(0)
+
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        snippet = cleaned[:200].replace("\n", " ")
+        raise RuntimeError(
+            "Source discovery returned non-JSON output. "
+            f"Could not parse model response: {exc.msg}. "
+            f"Response snippet: {snippet!r}"
+        ) from exc
+
+    if not isinstance(parsed, list):
+        raise RuntimeError("Source discovery response must be a JSON array.")
+
+    candidates: list[dict] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        if not item.get("url") or not item.get("label"):
+            continue
+        if not isinstance(item.get("sections"), list):
+            item["sections"] = []
+        candidates.append(item)
+
+    if not candidates:
+        raise RuntimeError(
+            "Source discovery returned no usable candidates. "
+            "Retry or add sources manually in Review Sources."
+        )
+
+    return candidates
+
+
 def discover_sources(program: str) -> list[dict]:
     """Use Gemini + Google Search grounding to find source URLs.
 
@@ -135,11 +190,7 @@ def discover_sources(program: str) -> list[dict]:
         )
         raw = _extract_response_text(response)
 
-    raw = raw.strip()
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-
-    candidates = json.loads(raw)
+    candidates = _parse_candidates_json(raw)
 
     grounded_urls: set[str] = set()
     metadata = getattr(response, "candidates", [])

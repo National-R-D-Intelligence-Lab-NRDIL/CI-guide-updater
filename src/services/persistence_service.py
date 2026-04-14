@@ -12,6 +12,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any
+import json
 
 import requests
 
@@ -82,12 +83,34 @@ def _github_request(method: str, path: str, *, json_body: dict[str, Any] | None 
     return response
 
 
+def _json_payload(resp: requests.Response, *, context: str) -> dict[str, Any] | list[Any]:
+    """Decode GitHub API JSON with clearer diagnostics for empty bodies."""
+    try:
+        return resp.json()
+    except json.JSONDecodeError as exc:
+        snippet = (resp.text or "")[:200].replace("\n", " ")
+        raise RuntimeError(
+            f"GitHub API returned non-JSON for {context}: {resp.status_code}. "
+            f"Body snippet: {snippet!r}"
+        ) from exc
+
+
 def _repo_parts() -> tuple[str, str]:
     cfg = _config()
     if "/" not in cfg["repo"]:
-        raise ValueError("RUNTIME_STORAGE_GITHUB_REPO must be in owner/repo format.")
+        raise ValueError(
+            "RUNTIME_STORAGE_GITHUB_REPO must be in owner/repo format, for example 'your-org/ci-sponsor-guide-runtime'."
+        )
     owner, repo = cfg["repo"].split("/", 1)
     return owner, repo
+
+
+def _repo_404_hint(owner: str, repo: str) -> str:
+    return (
+        "GitHub returned 404 for the runtime repository. "
+        f"Check that RUNTIME_STORAGE_GITHUB_REPO is exactly '{owner}/{repo}', "
+        "that the repository exists, and that the token has access to that repository."
+    )
 
 
 def _ensure_branch() -> None:
@@ -103,8 +126,11 @@ def _ensure_branch() -> None:
 
     repo_resp = _github_request("GET", f"/repos/{owner}/{repo}")
     if repo_resp.status_code != 200:
+        if repo_resp.status_code == 404:
+            raise RuntimeError(_repo_404_hint(owner, repo))
         raise RuntimeError(f"Unable to read repository metadata: {repo_resp.status_code} {repo_resp.text}")
-    default_branch = repo_resp.json().get("default_branch")
+    repo_payload = _json_payload(resp=repo_resp, context="repository metadata")
+    default_branch = repo_payload.get("default_branch") if isinstance(repo_payload, dict) else None
     if not default_branch:
         raise RuntimeError("Repository default branch not found.")
 
@@ -113,7 +139,8 @@ def _ensure_branch() -> None:
         raise RuntimeError(
             f"Unable to read default branch '{default_branch}': {default_resp.status_code} {default_resp.text}"
         )
-    sha = default_resp.json().get("commit", {}).get("sha")
+    branch_payload = _json_payload(resp=default_resp, context=f"default branch '{default_branch}'")
+    sha = branch_payload.get("commit", {}).get("sha") if isinstance(branch_payload, dict) else None
     if not sha:
         raise RuntimeError("Default branch HEAD SHA not found.")
 
@@ -154,7 +181,7 @@ def _list_dir(path: str) -> list[dict[str, Any]]:
         return []
     if resp.status_code != 200:
         raise RuntimeError(f"Unable to list {path}: {resp.status_code} {resp.text}")
-    payload = resp.json()
+    payload = _json_payload(resp=resp, context=f"listing '{path}'")
     return payload if isinstance(payload, list) else []
 
 
@@ -176,7 +203,9 @@ def _get_file_content(remote_path: str) -> bytes:
     resp = _github_request("GET", f"/repos/{owner}/{repo}/contents/{remote_path}?ref={cfg['branch']}")
     if resp.status_code != 200:
         raise RuntimeError(f"Unable to read {remote_path}: {resp.status_code} {resp.text}")
-    payload = resp.json()
+    payload = _json_payload(resp=resp, context=f"reading '{remote_path}'")
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Unexpected GitHub response shape while reading {remote_path}.")
     encoded = str(payload.get("content", "")).replace("\n", "")
     if not encoded:
         return b""
@@ -189,7 +218,8 @@ def _upsert_file(remote_path: str, content: bytes, message: str) -> None:
     existing_sha = None
     read_resp = _github_request("GET", f"/repos/{owner}/{repo}/contents/{remote_path}?ref={cfg['branch']}")
     if read_resp.status_code == 200:
-        existing_sha = read_resp.json().get("sha")
+        read_payload = _json_payload(resp=read_resp, context=f"checking '{remote_path}'")
+        existing_sha = read_payload.get("sha") if isinstance(read_payload, dict) else None
     elif read_resp.status_code != 404:
         raise RuntimeError(f"Unable to check {remote_path}: {read_resp.status_code} {read_resp.text}")
 
@@ -214,7 +244,8 @@ def _delete_file(remote_path: str, message: str) -> None:
         return
     if read_resp.status_code != 200:
         raise RuntimeError(f"Unable to read {remote_path}: {read_resp.status_code} {read_resp.text}")
-    sha = read_resp.json().get("sha")
+    read_payload = _json_payload(resp=read_resp, context=f"reading '{remote_path}'")
+    sha = read_payload.get("sha") if isinstance(read_payload, dict) else None
     if not sha:
         return
     payload = {"message": message, "sha": sha, "branch": cfg["branch"]}
