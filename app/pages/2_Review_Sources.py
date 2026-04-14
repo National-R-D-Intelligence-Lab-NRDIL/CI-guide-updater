@@ -202,14 +202,17 @@ if rows:
             ),
             label_visibility="collapsed",
         )
-        current_position = queue_names.index(source_name) + 1 if source_name in queue_names else 1
-        st.caption(f"Viewing {current_position} of {len(queue_names)}")
+        current_position = next(
+            (i + 1 for i, row in enumerate(rows) if str(row["name"]) == source_name),
+            1,
+        )
+        st.caption(f"Viewing {current_position} of {len(rows)}")
 
     selected_row = next((r for r in rows if r["name"] == source_name), None)
     if selected_row:
         with detail_col:
             with st.container(border=True):
-                st.caption(f"Source {current_position} of {len(queue_names)}")
+                st.caption(f"Source {current_position} of {len(rows)}")
                 st.markdown(f"#### {selected_row['display_label']}")
                 meta_col1, meta_col2 = st.columns(2)
                 meta_col1.write(f"**Status:** {selected_row.get('status', 'unreviewed').replace('_', ' ')}")
