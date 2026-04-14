@@ -388,10 +388,10 @@ def finalize_review(slug: str, include_unreviewed: bool = False) -> dict[str, An
 
 def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, Any]:
     """Generate the first guide draft (with citations) and write output files."""
-    import cite
-    import scraper
-
     try:
+        import cite
+        import scraper
+
         hydrate_program(slug)
         program_dir = _program_dir(slug)
         sources_path = program_dir / "sources.json"
@@ -403,6 +403,10 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
             raise UserFacingError("Approved sources file is empty or invalid.")
 
         guide_md = generator.generate_guide(sources, slug)
+        if not isinstance(guide_md, str) or not guide_md.strip():
+            raise UserFacingError(
+                "Guide generation returned empty content. The LLM may have filtered the response."
+            )
         guide_md = _sanitize_generated_guide_markdown(guide_md)
 
         evidence: list[dict] = []
