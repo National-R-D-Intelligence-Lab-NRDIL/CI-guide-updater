@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from app.runtime import ensure_project_root_on_path
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-ensure_project_root_on_path()
+from app.runtime import bootstrap  # noqa: E402
+bootstrap()
 
 import streamlit as st
 
