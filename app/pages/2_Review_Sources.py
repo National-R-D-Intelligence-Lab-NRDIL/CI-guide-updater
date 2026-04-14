@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from app.runtime import ensure_project_root_on_path
+
+ensure_project_root_on_path()
+
 from urllib.parse import urlparse
 
 import streamlit as st

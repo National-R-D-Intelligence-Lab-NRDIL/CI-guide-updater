@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from app.runtime import ensure_project_root_on_path
+
+ensure_project_root_on_path()
+
 import streamlit as st
 
 from app.components.shell import apply_app_chrome, render_page_header, render_sidebar
