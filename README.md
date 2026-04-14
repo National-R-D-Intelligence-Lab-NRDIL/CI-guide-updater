@@ -11,6 +11,7 @@ It is designed for non-developers to use in day-to-day work, while still staying
 3. Generates a first draft with citations and produces output files immediately.
 4. Exports `.md`, `.docx`, and `.pdf` files ready for download.
 5. Runs weekly updates to detect website changes and refresh the guide over time.
+6. Optionally runs an Alternative Funding Intelligence Monitor for foundation, corporate, international, and pharma partnership opportunities.
 
 ## Workflow
 
@@ -69,7 +70,7 @@ Available pages:
 
 | Step | Page | What it does |
 | --- | --- | --- |
-| 1 | Create New Program | Discover candidate source pages for a new grant program |
+| 1 | Create New Program | Discover candidate source pages for a new grant program or funding topic |
 | 2 | Review & Generate | Approve sources, generate the first draft with citations, and get output files |
 | 3 | View Outputs | Preview the guide and download `.md` / `.docx` / `.pdf` immediately |
 | 4 | Weekly Update | Refresh an existing guide when sponsor pages change (optional until needed) |
@@ -78,6 +79,31 @@ Available pages:
 After Step 2, output files are ready. You do not need to run Weekly Update before viewing results.
 
 Use the UI if you want a more visual, step-by-step experience. It reads and writes the same artifacts under `programs/<slug>/`, so the CLI and UI stay in sync.
+
+### Alternative Funding Intelligence Monitor (UI)
+
+In **Step 1 (Create New Program)**, enable **Alternative Funding Intelligence Monitor** to pivot from federal program discovery to non-federal opportunity scanning.
+
+When enabled, fill the form like this:
+
+- **Funding topic**: describe what you want funding for (not a federal program name)
+  - Example: `Alternative funding opportunities for translational oncology research`
+- **Alternative monitor focus areas**: comma-separated domains
+  - Example: `oncology, translational research, biomarkers`
+- **Alternative monitor geographies**: comma-separated regions/countries
+  - Example: `US, UK, EU, global`
+
+What this mode does:
+
+1. Seeds known alternative funders (for example Wellcome, Gates, Bloomberg, pharma partnering pages).
+2. Discovers additional relevant pages.
+3. Classifies and scores opportunities.
+4. Saves a ranked watchlist for review and weekly monitoring.
+
+Files created when enabled:
+
+- `programs/<slug>/review/sources_pending.json` (review queue with monitor metadata)
+- `programs/<slug>/review/alternative_funding_watchlist.json` (ranked candidate watchlist)
 
 ## Common Tasks
 
@@ -282,6 +308,19 @@ Field summary:
 | `name` | Yes | Stable ID used for snapshot filenames |
 | `url` | Yes | The source page to scrape |
 | `sections` | No | Leave empty unless you want to specify guide sections manually |
+
+When the Alternative Funding Intelligence Monitor is enabled, entries in `sources.json` may also include optional metadata fields:
+
+- `funding_type` (`foundation`, `corporate`, `international`, `pharma_partnership`)
+- `funder_name`
+- `opportunity_title`
+- `focus_areas`
+- `geography`
+- `deadline`
+- `typical_award_size`
+- `eligibility_summary`
+- `confidence_score`
+- `priority_score`
 
 ## Outputs
 

@@ -21,6 +21,9 @@ def create_new_program(
     async_review: bool = False,
     shared_review_dir: str = "",
     notify_webhook_url: str = "",
+    enable_alternative_monitor: bool = False,
+    monitor_sectors: list[str] | None = None,
+    monitor_regions: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create initial review workspace for a new program.
 
@@ -44,9 +47,18 @@ def create_new_program(
             encoding="utf-8",
         )
 
-        candidates = discover.discover_sources(program_name)
-        validated_candidates = discover.validate_urls(candidates)
-        sources = discover.build_sources_json(program_name, validated_candidates)
+        if enable_alternative_monitor:
+            monitor_payload = discover.build_alternative_funding_monitor(
+                program_name,
+                sectors=monitor_sectors,
+                regions=monitor_regions,
+            )
+            validated_candidates = monitor_payload["candidates"]
+            sources = monitor_payload["sources"]
+        else:
+            candidates = discover.discover_sources(program_name)
+            validated_candidates = discover.validate_urls(candidates)
+            sources = discover.build_sources_json(program_name, validated_candidates)
         if not sources:
             raise UserFacingError("No scrapeable sources discovered for this program.")
 
@@ -54,8 +66,16 @@ def create_new_program(
         review_dir.mkdir(parents=True, exist_ok=True)
         sources_pending_path = review_dir / "sources_pending.json"
         sources_pending_path.write_text(json.dumps(sources, indent=2), encoding="utf-8")
+        monitor_watchlist_path = review_dir / "alternative_funding_watchlist.json"
+        if enable_alternative_monitor:
+            monitor_watchlist_path.write_text(
+                json.dumps(validated_candidates, indent=2),
+                encoding="utf-8",
+            )
 
         created_files = [str(metadata_path), str(sources_pending_path)]
+        if enable_alternative_monitor:
+            created_files.append(str(monitor_watchlist_path))
         next_steps = [
             f"Continue to review candidate sources.",
             "Finalize approved sources in the Review Sources page.",
@@ -119,6 +139,7 @@ def create_new_program(
             "created_files": created_files,
             "next_steps": next_steps,
             "candidates": validated_candidates,
+            "monitor_enabled": enable_alternative_monitor,
             "async_details": async_details,
             "storage": storage,
         }

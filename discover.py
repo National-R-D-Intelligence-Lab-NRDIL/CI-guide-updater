@@ -8,6 +8,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any, Optional, Set, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -51,6 +52,59 @@ Requirements, Resources, Tips, FAQ)
 Return ONLY a JSON array. Each element must have keys: "url", "label", \
 "sections". No markdown fences, no commentary — just the JSON array.
 """
+
+ALTERNATIVE_FUNDING_SEED_CATALOG: list[dict[str, Any]] = [
+    {
+        "label": "Wellcome Funding Opportunities",
+        "url": "https://wellcome.org/grant-funding/schemes",
+        "sections": ["Program Overview", "Eligibility", "Key Dates", "Award Size", "Resources"],
+        "funding_type": "international",
+        "funder_name": "Wellcome Trust",
+        "focus_areas": ["global health", "biomedical research"],
+        "geography": "global",
+        "source_authority": 1.0,
+    },
+    {
+        "label": "Gates Foundation Grant Opportunities",
+        "url": "https://www.gatesfoundation.org/about/how-we-work/grant-opportunities",
+        "sections": ["Program Overview", "Eligibility", "Key Dates", "Application Requirements"],
+        "funding_type": "foundation",
+        "funder_name": "Gates Foundation",
+        "focus_areas": ["health", "development", "innovation"],
+        "geography": "global",
+        "source_authority": 1.0,
+    },
+    {
+        "label": "Bloomberg Philanthropies Funding",
+        "url": "https://www.bloomberg.org/",
+        "sections": ["Program Overview", "Eligibility", "Resources"],
+        "funding_type": "foundation",
+        "funder_name": "Bloomberg Philanthropies",
+        "focus_areas": ["public health", "cities", "policy"],
+        "geography": "global",
+        "source_authority": 0.95,
+    },
+    {
+        "label": "Pfizer Research Partnerships",
+        "url": "https://www.pfizer.com/science/research-development",
+        "sections": ["Program Overview", "Eligibility", "Application Requirements", "Resources"],
+        "funding_type": "pharma_partnership",
+        "funder_name": "Pfizer",
+        "focus_areas": ["biopharma", "clinical research"],
+        "geography": "global",
+        "source_authority": 0.9,
+    },
+    {
+        "label": "Roche Partnering and Innovation",
+        "url": "https://www.roche.com/partnering",
+        "sections": ["Program Overview", "Eligibility", "Application Requirements", "Resources"],
+        "funding_type": "pharma_partnership",
+        "funder_name": "Roche",
+        "focus_areas": ["drug development", "diagnostics"],
+        "geography": "global",
+        "source_authority": 0.9,
+    },
+]
 
 
 def _extract_response_text(response) -> str:
@@ -254,9 +308,147 @@ def _make_name(label: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", label).strip("_")
 
 
+def _normalize_tokens(values: Optional[list[str]]) -> list[str]:
+    if not values:
+        return []
+    normalized: list[str] = []
+    for value in values:
+        token = re.sub(r"\s+", " ", str(value).strip().lower())
+        if token:
+            normalized.append(token)
+    return normalized
+
+
+def _infer_funding_type(label: str, url: str) -> str:
+    text = f"{label} {url}".lower()
+    if any(word in text for word in ["partner", "pharma", "clinical", "biotech", "drug"]):
+        return "pharma_partnership"
+    if any(word in text for word in ["international", "global", "world"]):
+        return "international"
+    if any(word in text for word in ["corporate", "industry"]):
+        return "corporate"
+    return "foundation"
+
+
+def _infer_funder_name(url: str, label: str) -> str:
+    text = f"{label} {url}".lower()
+    aliases = {
+        "wellcome": "Wellcome Trust",
+        "gates": "Gates Foundation",
+        "bloomberg": "Bloomberg Philanthropies",
+        "pfizer": "Pfizer",
+        "roche": "Roche",
+        "novartis": "Novartis",
+        "merck": "Merck",
+    }
+    for key, value in aliases.items():
+        if key in text:
+            return value
+    domain = re.sub(r"^https?://", "", url).split("/")[0]
+    return domain.replace("www.", "")
+
+
+def score_opportunity(
+    program: str,
+    candidate: dict[str, Any],
+    sectors: Optional[list[str]] = None,
+    regions: Optional[list[str]] = None,
+    tracked_urls: Optional[Set[str]] = None,
+) -> Tuple[int, float]:
+    """Score a source candidate as an alternative-funding opportunity."""
+    sectors_norm = _normalize_tokens(sectors)
+    regions_norm = _normalize_tokens(regions)
+    tracked = tracked_urls or set()
+    blob = " ".join(
+        [
+            program,
+            str(candidate.get("label", "")),
+            str(candidate.get("url", "")),
+            " ".join(candidate.get("sections", []) or []),
+            " ".join(candidate.get("focus_areas", []) or []),
+            str(candidate.get("geography", "")),
+        ]
+    ).lower()
+
+    relevance = 0.5
+    if sectors_norm and any(sector in blob for sector in sectors_norm):
+        relevance += 0.2
+    if regions_norm and any(region in blob for region in regions_norm):
+        relevance += 0.1
+    if any(keyword in blob for keyword in ["deadline", "apply", "funding", "grant", "rfp", "opportun"]):
+        relevance += 0.1
+
+    authority = float(candidate.get("source_authority", 0.75))
+    novelty = 0.0 if candidate.get("url", "") in tracked else 0.1
+    urgency = 0.1 if candidate.get("deadline") else 0.0
+
+    confidence = max(0.0, min(1.0, relevance + (authority - 0.7) * 0.4))
+    priority = int(round(max(0.0, min(1.0, relevance + authority * 0.2 + novelty + urgency)) * 100))
+    return priority, round(confidence, 3)
+
+
+def discover_alternative_funding_sources(
+    program: str,
+    sectors: Optional[list[str]] = None,
+    regions: Optional[list[str]] = None,
+) -> list[dict[str, Any]]:
+    """Discover and rank non-federal alternative funding opportunities."""
+    enriched_prompt = (
+        f"{program} foundation corporate international funding opportunities "
+        "Wellcome Trust Gates Foundation Bloomberg Philanthropies pharma partnerships"
+    )
+    discovered = discover_sources(enriched_prompt)
+    merged: list[dict[str, Any]] = [*ALTERNATIVE_FUNDING_SEED_CATALOG, *discovered]
+    validated = validate_urls(merged)
+
+    seen: set[str] = set()
+    ranked: list[dict[str, Any]] = []
+    for entry in validated:
+        url = str(entry.get("url", "")).strip()
+        if not url or url in seen or not entry.get("reachable"):
+            continue
+        seen.add(url)
+        entry["funding_type"] = entry.get("funding_type") or _infer_funding_type(
+            str(entry.get("label", "")), url
+        )
+        entry["funder_name"] = entry.get("funder_name") or _infer_funder_name(
+            url, str(entry.get("label", ""))
+        )
+        entry["focus_areas"] = entry.get("focus_areas") or []
+        entry["geography"] = entry.get("geography") or ""
+        entry["deadline"] = entry.get("deadline")
+        entry["typical_award_size"] = entry.get("typical_award_size")
+        entry["eligibility_summary"] = entry.get("eligibility_summary", "")
+        priority, confidence = score_opportunity(
+            program=program,
+            candidate=entry,
+            sectors=sectors,
+            regions=regions,
+        )
+        entry["priority_score"] = priority
+        entry["confidence_score"] = confidence
+        ranked.append(entry)
+
+    ranked.sort(key=lambda row: (row.get("priority_score", 0), row.get("confidence_score", 0.0)), reverse=True)
+    return ranked
+
+
+def build_alternative_funding_monitor(
+    program: str,
+    sectors: Optional[list[str]] = None,
+    regions: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """Build ranked alternative-funding monitor candidates and sources payload."""
+    ranked = discover_alternative_funding_sources(program=program, sectors=sectors, regions=regions)
+    sources = build_sources_json(program, ranked, include_metadata=True)
+    return {"candidates": ranked, "sources": sources}
+
+
 def build_sources_json(
     program: str,
     candidates: list[dict],
+    *,
+    include_metadata: bool = False,
 ) -> list[dict]:
     """Convert validated candidates into sources.json format.
 
@@ -277,11 +469,29 @@ def build_sources_json(
         ct = entry.get("content_type", "")
         if "html" not in ct and "text" not in ct:
             continue
-        sources.append({
+        item = {
             "name": f"{prefix}_{_make_name(entry['label'])}",
             "url": entry["url"],
             "sections": entry.get("sections", []),
-        })
+        }
+        if include_metadata:
+            for key in (
+                "funding_type",
+                "funder_name",
+                "opportunity_title",
+                "focus_areas",
+                "geography",
+                "deadline",
+                "typical_award_size",
+                "eligibility_summary",
+                "confidence_score",
+                "priority_score",
+            ):
+                if key in entry:
+                    item[key] = entry.get(key)
+            if not item.get("opportunity_title"):
+                item["opportunity_title"] = entry.get("label", "")
+        sources.append(item)
     return sources
 
 

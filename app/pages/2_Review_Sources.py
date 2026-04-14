@@ -138,6 +138,11 @@ st.session_state["active_review_context"] = {"slug": selected_slug, "rows": rows
 for row in rows:
     row["sections_text"] = ", ".join(row["sections"])
     row["display_label"] = _source_display_label(row, selected_slug)
+    metadata = row.get("metadata") or {}
+    row["funding_type"] = metadata.get("funding_type", "")
+    row["funder_name"] = metadata.get("funder_name", "")
+    row["priority_score"] = metadata.get("priority_score", "")
+    row["confidence_score"] = metadata.get("confidence_score", "")
 
 st.markdown("### Source review queue")
 review_col, summary_col = st.columns([2, 1], gap="large")
@@ -238,6 +243,14 @@ if rows:
                     st.write(f"**Title:** {selected_row['title']}")
                 st.write(f"**URL:** {selected_row['url']}")
                 st.write(f"**Sections:** {selected_row['sections_text'] or '(none)'}")
+                if selected_row.get("funder_name"):
+                    st.write(f"**Funder:** {selected_row['funder_name']}")
+                if selected_row.get("funding_type"):
+                    st.write(f"**Funding Type:** {selected_row['funding_type']}")
+                if selected_row.get("priority_score") != "":
+                    st.write(f"**Priority Score:** {selected_row['priority_score']}")
+                if selected_row.get("confidence_score") != "":
+                    st.write(f"**Confidence Score:** {selected_row['confidence_score']}")
                 if selected_row.get("created_at"):
                     st.write(f"**Added at:** `{selected_row['created_at']}`")
 

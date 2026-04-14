@@ -1,0 +1,123 @@
+[
+  {
+    "name": "Corporate_and_foundation_funding_for_AI_enabled_diagnostics_Wellcome_Funding_Opportunities",
+    "url": "https://wellcome.org/research-funding/schemes",
+    "sections": [
+      "Program Overview",
+      "Eligibility",
+      "Key Dates",
+      "Award Size",
+      "Resources"
+    ],
+    "funding_type": "international",
+    "funder_name": "Wellcome Trust",
+    "focus_areas": [
+      "global health",
+      "biomedical research"
+    ],
+    "geography": "global",
+    "deadline": null,
+    "typical_award_size": null,
+    "eligibility_summary": "",
+    "confidence_score": 1.0,
+    "priority_score": 100,
+    "opportunity_title": "Wellcome Funding Opportunities"
+  },
+  {
+    "name": "Corporate_and_foundation_funding_for_AI_enabled_diagnostics_Gates_Foundation_Grant_Opportunities",
+    "url": "https://www.gatesfoundation.org/about/how-we-work/grant-opportunities",
+    "sections": [
+      "Program Overview",
+      "Eligibility",
+      "Key Dates",
+      "Application Requirements"
+    ],
+    "funding_type": "foundation",
+    "funder_name": "Gates Foundation",
+    "focus_areas": [
+      "health",
+      "development",
+      "innovation"
+    ],
+    "geography": "global",
+    "deadline": null,
+    "typical_award_size": null,
+    "eligibility_summary": "",
+    "confidence_score": 1.0,
+    "priority_score": 100,
+    "opportunity_title": "Gates Foundation Grant Opportunities"
+  },
+  {
+    "name": "Corporate_and_foundation_funding_for_AI_enabled_diagnostics_Pfizer_Research_Partnerships",
+    "url": "https://www.pfizer.com/science",
+    "sections": [
+      "Program Overview",
+      "Eligibility",
+      "Application Requirements",
+      "Resources"
+    ],
+    "funding_type": "pharma_partnership",
+    "funder_name": "Pfizer",
+    "focus_areas": [
+      "biopharma",
+      "clinical research"
+    ],
+    "geography": "global",
+    "deadline": null,
+    "typical_award_size": null,
+    "eligibility_summary": "",
+    "confidence_score": 0.98,
+    "priority_score": 100,
+    "opportunity_title": "Pfizer Research Partnerships"
+  },
+  {
+    "name": "Corporate_and_foundation_funding_for_AI_enabled_diagnostics_Roche_Partnering_and_Innovation",
+    "url": "https://www.roche.com/innovation/partnering",
+    "sections": [
+      "Program Overview",
+      "Eligibility",
+      "Application Requirements",
+      "Resources"
+    ],
+    "funding_type": "pharma_partnership",
+    "funder_name": "Roche",
+    "focus_areas": [
+      "drug development",
+      "diagnostics"
+    ],
+    "geography": "global",
+    "deadline": null,
+    "typical_award_size": null,
+    "eligibility_summary": "",
+    "confidence_score": 0.98,
+    "priority_score": 100,
+    "opportunity_title": "Roche Partnering and Innovation"
+  },
+  {
+    "name": "Corporate_and_foundation_funding_for_AI_enabled_diagnostics_Program_Overview",
+    "url": "https://gcgh.grandchallenges.org/challenge/innovations-cost-disruptive-tools-diagnosis-and-screening",
+    "sections": [
+      "Program Overview"
+    ],
+    "funding_type": "foundation",
+    "funder_name": "gcgh.grandchallenges.org",
+    "focus_areas": [],
+    "geography": "",
+    "deadline": null,
+    "typical_award_size": null,
+    "eligibility_summary": "",
+    "confidence_score": 0.82,
+    "priority_score": 100,
+    "opportunity_title": "Program Overview"
+  },
+  {
+    "name": "corporate_and_foundation_funding_for_ai_enabled_diagnostics_manual_grand_challenges_about_page",
+    "url": "https://www.grandchallenges.org/about",
+    "sections": []
+  },
+  {
+    "name": "corporate_and_foundation_funding_for_ai_enabled_diagnostics_manual_grand_challenges_opportunities",
+    "url": "https://www.grandchallenges.org/grant-opportunities",
+    "sections": []
+  }
+]

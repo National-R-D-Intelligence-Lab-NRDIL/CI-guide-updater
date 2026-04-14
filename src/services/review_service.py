@@ -129,6 +129,18 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+_SOURCE_BASE_FIELDS = {
+    "name",
+    "url",
+    "sections",
+    "title",
+    "status",
+    "notes",
+    "source_origin",
+    "created_at",
+}
+
+
 def _make_manual_name(slug: str, title: str, url: str) -> str:
     token = title.strip() or url.strip().split("//")[-1].split("/")[0] or "source"
     safe = "".join(ch if ch.isalnum() else "_" for ch in token).strip("_") or "source"
@@ -286,6 +298,7 @@ def load_review_context(slug: str) -> dict[str, Any]:
         for src in sources:
             name = src.get("name", "")
             decision = decisions.get(name, {})
+            metadata = {k: v for k, v in src.items() if k not in _SOURCE_BASE_FIELDS}
             rows.append(
                 {
                     "name": name,
@@ -296,6 +309,7 @@ def load_review_context(slug: str) -> dict[str, Any]:
                     "source_origin": "auto",
                     "title": src.get("title", ""),
                     "created_at": "",
+                    "metadata": metadata,
                 }
             )
 
@@ -312,6 +326,7 @@ def load_review_context(slug: str) -> dict[str, Any]:
                     "source_origin": "manual",
                     "title": src.get("title", ""),
                     "created_at": src.get("created_at", ""),
+                    "metadata": {},
                 }
             )
 
@@ -362,7 +377,12 @@ def finalize_review(slug: str, include_unreviewed: bool = False) -> dict[str, An
                 include_unreviewed and status in {"unreviewed", "pending_manual_review"}
             ):
                 approved_sources.append(
-                    {"name": row["name"], "url": row["url"], "sections": row["sections"]}
+                    {
+                        "name": row["name"],
+                        "url": row["url"],
+                        "sections": row["sections"],
+                        **(row.get("metadata") or {}),
+                    }
                 )
 
         if not approved_sources:
