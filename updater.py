@@ -8,6 +8,8 @@ Configured for Google Gemini via its OpenAI-compatible endpoint.  Set
 ``GEMINI_API_KEY`` in the environment (or a ``.env`` file) before use.
 """
 
+import logging
+import os
 from pathlib import Path
 
 from openai import APIConnectionError, APIStatusError, OpenAI
@@ -18,6 +20,12 @@ _PROJECT_ROOT = Path(__file__).resolve().parent
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MAX_INPUT_CHARS = 200_000
+MAX_INPUT_CHARS = int(
+    os.getenv("LLM_MAX_INPUT_CHARS", str(DEFAULT_MAX_INPUT_CHARS))
+)
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are an expert Research Development assistant. Your task is to update "
@@ -27,6 +35,39 @@ SYSTEM_PROMPT = (
     "eligibility criteria not present in the diff.\n\n"
     "Return ONLY the updated markdown — no preamble, no commentary."
 )
+
+
+def _truncate_guide_and_diff(
+    current_guide_md: str,
+    diff_text: str,
+    max_chars: int,
+) -> tuple[str, str]:
+    """Fit guide + diff into a bounded LLM input budget."""
+    total_len = len(current_guide_md) + len(diff_text)
+    if total_len <= max_chars:
+        return current_guide_md, diff_text
+
+    if len(diff_text) >= max_chars:
+        truncated_diff = diff_text[:max_chars]
+        logger.warning(
+            "Truncating guide+diff from %d to %d chars before LLM call "
+            "(guide removed, diff truncated).",
+            total_len,
+            max_chars,
+        )
+        return "", truncated_diff
+
+    remaining_for_guide = max_chars - len(diff_text)
+    truncated_guide = current_guide_md[:remaining_for_guide]
+    logger.warning(
+        "Truncating guide+diff from %d to %d chars before LLM call "
+        "(guide reduced from %d to %d chars).",
+        total_len,
+        max_chars,
+        len(current_guide_md),
+        len(truncated_guide),
+    )
+    return truncated_guide, diff_text
 
 
 def _build_user_prompt(current_guide_md: str, diff_text: str) -> str:
@@ -84,6 +125,11 @@ def update_guide(
         base_url=GEMINI_BASE_URL,
     )
 
+    current_guide_md, diff_text = _truncate_guide_and_diff(
+        current_guide_md,
+        diff_text,
+        MAX_INPUT_CHARS,
+    )
     user_prompt = _build_user_prompt(current_guide_md, diff_text)
 
     response = client.chat.completions.create(
@@ -202,19 +248,19 @@ Up to **$300,000** in direct costs over the entire project period.
   - Application Due  | Feb 25, 2025 |
 """
 
-    print("=" * 60)
-    print("LLM UPDATER — Demo")
-    print("=" * 60)
-    print()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logger.info("demo=updater status=start")
 
     try:
         updated = update_guide(sample_guide, sample_diff)
-        print(updated)
+        logger.info("demo=updater status=success updated_guide=%s", updated)
     except EnvironmentError as exc:
-        print(f"[CONFIG ERROR] {exc}")
+        logger.error("demo=updater status=config_error error=%s", exc)
     except APIConnectionError as exc:
-        print(f"[CONNECTION ERROR] Could not reach the LLM endpoint: {exc}")
+        logger.error("demo=updater status=connection_error error=%s", exc)
     except APIStatusError as exc:
-        print(
-            f"[API ERROR] {exc.status_code} from the LLM provider: {exc.message}"
+        logger.error(
+            "demo=updater status=api_error code=%s message=%s",
+            exc.status_code,
+            exc.message,
         )

@@ -7,6 +7,7 @@ editing required.
 """
 
 import json
+import logging
 import os
 import re
 from typing import Optional
@@ -17,6 +18,7 @@ import scraper
 import updater
 
 REVIEW_DIR = "review"
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -114,21 +116,14 @@ def _print_source(idx: int, total: int, src: dict) -> None:
     """Pretty-print one source entry."""
     sections = src.get("sections", [])
     sec_str = ", ".join(sections) if sections else "(auto-detect on next pipeline run)"
-    print(f"\n  [{idx}/{total}]  {src['name']}")
-    print(f"           URL:      {src['url']}")
-    print(f"           Sections: {sec_str}")
+    logger.info("review_source index=%d total=%d name=%s", idx, total, src["name"])
+    logger.info("review_source_url name=%s url=%s", src["name"], src["url"])
+    logger.info("review_source_sections name=%s sections=%s", src["name"], sec_str)
 
 
 def _print_menu() -> None:
     """Show available actions."""
-    print()
-    print("    1  Approve this source")
-    print("    2  Reject this source")
-    print("    3  Edit the URL for this source")
-    print("    4  Add a new link (not in the list)")
-    print("    5  Show approved sources so far")
-    print("    6  Done — finish review")
-    print()
+    logger.info("review_menu options=1:approve,2:reject,3:edit_url,4:add_link,5:show_approved,6:finish")
 
 
 def _add_new_link(
@@ -136,29 +131,29 @@ def _add_new_link(
     guide_md: str,
 ) -> Optional[dict]:
     """Prompt the user for a new URL, validate it, and auto-classify sections."""
-    print("\n  --- Add a new source link ---")
+    logger.info("review_add_link status=start")
     url = input("  Paste the URL: ").strip()
     if not url:
-        print("  (cancelled)")
+        logger.info("review_add_link status=cancelled reason=empty_url")
         return None
 
-    print("  Checking URL ...")
+    logger.info("review_add_link status=validating_url")
     info = _validate_url(url)
     if not info["reachable"]:
-        print(f"  ✗ URL is not reachable (status {info.get('status', '?')})")
+        logger.warning("review_add_link url_reachable=false status=%s", info.get("status", "?"))
         proceed = input("  Add it anyway? (y/n): ").strip().lower()
         if proceed != "y":
             return None
 
     ct = info.get("content_type", "")
     if "html" not in ct and "text" not in ct:
-        print(f"  ⚠  Content type is '{ct}' (not HTML). The scraper may not work on this page.")
+        logger.warning("review_add_link content_type=%s warning=non_html", ct)
 
     final_url = info.get("url", url)
     label = input("  Short label (e.g. 'Program FAQ'): ").strip() or "New_Source"
     name = _make_name(program_prefix, label)
 
-    print("  Detecting relevant guide sections ...")
+    logger.info("review_add_link status=detecting_sections")
     sections: list[str] = []
     try:
         page_text = scraper.fetch_and_clean_text(final_url)
@@ -167,12 +162,12 @@ def _add_new_link(
         pass
 
     if sections:
-        print(f"  Auto-detected sections: {', '.join(sections)}")
+        logger.info("review_add_link autodetected_sections=%s", ",".join(sections))
     else:
-        print("  Could not auto-detect sections (will be inferred at update time).")
+        logger.info("review_add_link autodetected_sections=none")
 
     entry = {"name": name, "url": final_url, "sections": sections, "data_class": "public"}
-    print(f"  ✓ Added: {name}")
+    logger.info("review_add_link status=added name=%s url=%s", name, final_url)
     return entry
 
 
@@ -200,9 +195,7 @@ def interactive_review(
     idx = 0
     total = len(queue)
 
-    print(f"\n{'=' * 60}")
-    print(f"  Source Review — {total} source(s) to review")
-    print(f"{'=' * 60}")
+    logger.info("review_start total_sources=%d", total)
 
     while idx < len(queue):
         total = len(queue)
@@ -214,58 +207,66 @@ def interactive_review(
 
         if choice == "1":
             approved.append(src)
-            print("  → Approved ✓")
+            logger.info("review_action action=approve name=%s", src["name"])
             idx += 1
 
         elif choice == "2":
-            print("  → Rejected")
+            logger.info("review_action action=reject name=%s", src["name"])
             idx += 1
 
         elif choice == "3":
             new_url = input("  New URL: ").strip()
             if new_url:
-                print("  Checking URL ...")
+                logger.info("review_action action=edit_url_validate name=%s", src["name"])
                 info = _validate_url(new_url)
                 final = info.get("url", new_url)
                 if info["reachable"]:
-                    print(f"  ✓ Reachable → {final}")
+                    logger.info("review_action action=edit_url_reachable name=%s url=%s", src["name"], final)
                 else:
-                    print(f"  ⚠ Not reachable (status {info.get('status', '?')})")
+                    logger.warning(
+                        "review_action action=edit_url_unreachable name=%s status=%s",
+                        src["name"],
+                        info.get("status", "?"),
+                    )
                 src["url"] = final
 
-                print("  Re-detecting sections ...")
+                logger.info("review_action action=edit_url_redetect_sections name=%s", src["name"])
                 try:
                     page_text = scraper.fetch_and_clean_text(final)
                     src["sections"] = updater.classify_sections(page_text, guide_md)
                     if src["sections"]:
-                        print(f"  Sections: {', '.join(src['sections'])}")
+                        logger.info(
+                            "review_action action=edit_url_sections name=%s sections=%s",
+                            src["name"],
+                            ",".join(src["sections"]),
+                        )
                 except Exception:
                     pass
 
             approved.append(src)
-            print("  → Approved (edited) ✓")
+            logger.info("review_action action=approve_edited name=%s", src["name"])
             idx += 1
 
         elif choice == "4":
             new_entry = _add_new_link(prefix, guide_md)
             if new_entry:
                 queue.append(new_entry)
-                print(f"  (Added to queue — will appear as [{len(queue)}/{len(queue)}])")
+                logger.info("review_action action=queued_new_source position=%d", len(queue))
 
         elif choice == "5":
             if approved:
-                print(f"\n  Approved so far ({len(approved)}):")
+                logger.info("review_action action=show_approved count=%d", len(approved))
                 for a in approved:
-                    print(f"    • {a['name']:40s} {a['url']}")
+                    logger.info("review_approved_item name=%s url=%s", a["name"], a["url"])
             else:
-                print("\n  No sources approved yet.")
+                logger.info("review_action action=show_approved count=0")
 
         elif choice == "6":
-            print("\n  Finishing review early.")
+            logger.info("review_action action=finish_early")
             break
 
         else:
-            print("  Invalid choice — enter a number 1 through 6.")
+            logger.warning("review_action action=invalid_choice value=%s", choice)
 
     want_more = True
     while want_more:
@@ -277,5 +278,5 @@ def interactive_review(
         else:
             want_more = False
 
-    print(f"\n  Review complete — {len(approved)} source(s) approved.")
+    logger.info("review_complete approved_count=%d", len(approved))
     return approved

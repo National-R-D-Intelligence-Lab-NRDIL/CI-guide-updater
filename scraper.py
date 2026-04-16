@@ -6,17 +6,50 @@ changes via SHA-256 hashing, and persists state between runs.
 
 import hashlib
 import json
+import logging
 import os
 import re
+import time
 from datetime import datetime, timezone
+from typing import TextIO
 
 import requests
 from bs4 import BeautifulSoup
 
 from src.utils.source_policy import normalize_and_validate_public_url
 
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
+
 STATE_FILE = "state.json"
 DATA_DIR = "data"
+
+logger = logging.getLogger(__name__)
+
+
+def _lock_file_path(state_file: str) -> str:
+    """Return the lock-file path associated with a state file."""
+    return f"{state_file}.lock"
+
+
+def _acquire_file_lock(fh: TextIO) -> None:
+    """Acquire an exclusive lock for a lock-file handle."""
+    if os.name == "nt":
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+    else:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+
+
+def _release_file_lock(fh: TextIO) -> None:
+    """Release an exclusive lock for a lock-file handle."""
+    if os.name == "nt":
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 def fetch_and_clean_text(url: str) -> str:
@@ -29,11 +62,32 @@ def fetch_and_clean_text(url: str) -> str:
         Cleaned, human-readable text extracted from the page.
 
     Raises:
-        requests.HTTPError: If the server returns a non-2xx status code.
+        requests.HTTPError: If the server returns a non-retryable non-2xx status code.
+        requests.ConnectionError: If all retry attempts fail due to connectivity issues.
     """
     safe_url = normalize_and_validate_public_url(url, context="scraper")
-    response = requests.get(safe_url, timeout=30)
-    response.raise_for_status()
+    attempts = 3
+    response: requests.Response | None = None
+    last_connection_error: requests.ConnectionError | None = None
+
+    for attempt in range(attempts):
+        try:
+            response = requests.get(safe_url, timeout=30)
+            if response.status_code in {429, 503} and attempt < attempts - 1:
+                time.sleep(2**attempt)
+                continue
+            response.raise_for_status()
+            break
+        except requests.ConnectionError as exc:
+            last_connection_error = exc
+            if attempt >= attempts - 1:
+                raise
+            time.sleep(2**attempt)
+
+    if response is None:
+        if last_connection_error is not None:
+            raise last_connection_error
+        raise RuntimeError(f"Failed to fetch {safe_url} after {attempts} attempts.")
 
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -59,17 +113,35 @@ def generate_hash(text: str) -> str:
 
 def _load_state(state_file: str) -> dict:
     """Read and return the persisted state dict, or an empty dict."""
-    if os.path.exists(state_file):
-        with open(state_file, "r", encoding="utf-8") as fh:
-            return json.load(fh)
-    return {}
+    os.makedirs(os.path.dirname(state_file) or ".", exist_ok=True)
+    lock_path = _lock_file_path(state_file)
+    with open(lock_path, "a+", encoding="utf-8") as lock_fh:
+        _acquire_file_lock(lock_fh)
+        try:
+            if not os.path.exists(state_file):
+                return {}
+            with open(state_file, "r", encoding="utf-8") as state_fh:
+                raw = state_fh.read().strip()
+                if not raw:
+                    return {}
+                return json.loads(raw)
+        finally:
+            _release_file_lock(lock_fh)
 
 
 def _save_state(state: dict, state_file: str) -> None:
     """Atomically write *state* to the state file."""
     os.makedirs(os.path.dirname(state_file) or ".", exist_ok=True)
-    with open(state_file, "w", encoding="utf-8") as fh:
-        json.dump(state, fh, indent=2)
+    lock_path = _lock_file_path(state_file)
+    with open(lock_path, "a+", encoding="utf-8") as lock_fh:
+        _acquire_file_lock(lock_fh)
+        try:
+            with open(state_file, "w", encoding="utf-8") as state_fh:
+                json.dump(state, state_fh, indent=2)
+                state_fh.flush()
+                os.fsync(state_fh.fileno())
+        finally:
+            _release_file_lock(lock_fh)
 
 
 def check_for_updates(
@@ -110,7 +182,7 @@ def check_for_updates(
     entry = state.get(name)
 
     if entry and entry.get("hash") == new_hash:
-        print(f"[{now}] {name}: no changes detected.")
+        logger.info("source=%s status=no_change checked_at=%s", name, now)
         state[name]["last_checked"] = now
         _save_state(state, state_file)
         return False
@@ -128,11 +200,17 @@ def check_for_updates(
         "last_checked": now,
     }
     _save_state(state, state_file)
-    print(f"[{now}] {name}: {label} — saved to {data_path}")
+    logger.info(
+        "source=%s status=%s checked_at=%s snapshot_path=%s",
+        name,
+        label.replace(" ", "_"),
+        now,
+        data_path,
+    )
     return True
 
 
 if __name__ == "__main__":
     TARGET_URL = "https://grants.nih.gov/grants/funding/r15.htm"
     changed = check_for_updates(TARGET_URL, "NIH_R15")
-    print(f"Content changed: {changed}")
+    logger.info("content_changed=%s", changed)

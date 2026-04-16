@@ -23,11 +23,20 @@ _API_BASE = "https://api.github.com"
 _DEFAULT_BRANCH = "runtime-data"
 _DEFAULT_PREFIX = "runtime/programs"
 _SYNC_INTERVAL_SECONDS = 20
+_GITHUB_RETRY_ATTEMPTS = 3
 _CACHE: dict[str, Any] = {
     "slug_list_at": 0.0,
     "slug_list": [],
     "hydrated_at": {},
 }
+
+
+class GitHubRequestError(RuntimeError):
+    """GitHub request failed after retries."""
+
+    def __init__(self, message: str, *, retryable: bool):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 def _backend() -> str:
@@ -73,14 +82,51 @@ def _api_url(path: str) -> str:
 
 
 def _github_request(method: str, path: str, *, json_body: dict[str, Any] | None = None) -> requests.Response:
-    response = requests.request(
-        method=method,
-        url=_api_url(path),
-        headers=_headers(),
-        json=json_body,
-        timeout=30,
+    response: requests.Response | None = None
+    last_exc: requests.RequestException | None = None
+    retryable_failure = False
+
+    for attempt in range(_GITHUB_RETRY_ATTEMPTS):
+        try:
+            response = requests.request(
+                method=method,
+                url=_api_url(path),
+                headers=_headers(),
+                json=json_body,
+                timeout=30,
+            )
+        except requests.RequestException as exc:
+            last_exc = exc
+            retryable_failure = True
+            if attempt >= _GITHUB_RETRY_ATTEMPTS - 1:
+                break
+            time.sleep(2**attempt)
+            continue
+
+        is_retryable_status = response.status_code == 429 or response.status_code >= 500
+        if is_retryable_status:
+            retryable_failure = True
+            if attempt < _GITHUB_RETRY_ATTEMPTS - 1:
+                time.sleep(2**attempt)
+                continue
+
+        return response
+
+    if response is not None:
+        raise GitHubRequestError(
+            f"GitHub request failed after retries: {method} {path} -> {response.status_code} {response.text}",
+            retryable=retryable_failure,
+        )
+    if last_exc is not None:
+        raise GitHubRequestError(
+            f"GitHub request failed after retries: {method} {path} ({last_exc})",
+            retryable=retryable_failure,
+        ) from last_exc
+
+    raise GitHubRequestError(
+        f"GitHub request failed after retries: {method} {path}",
+        retryable=retryable_failure,
     )
-    return response
 
 
 def _json_payload(resp: requests.Response, *, context: str) -> dict[str, Any] | list[Any]:
@@ -334,8 +380,16 @@ def hydrate_program(slug: str, *, force: bool = False) -> dict[str, Any]:
             "message": f"Hydrated {synced} file(s) from remote storage; removed {removed_local} stale local file(s).",
             "remote_url": program_remote_url(slug),
         }
+    except GitHubRequestError as exc:
+        return {
+            "ok": False,
+            "enabled": True,
+            "message": "Hydration failed.",
+            "detail": str(exc),
+            "retryable": exc.retryable,
+        }
     except Exception as exc:
-        return {"ok": False, "enabled": True, "message": "Hydration failed.", "detail": str(exc)}
+        return {"ok": False, "enabled": True, "message": "Hydration failed.", "detail": str(exc), "retryable": False}
 
 
 def persist_program(slug: str) -> dict[str, Any]:
@@ -381,8 +435,16 @@ def persist_program(slug: str) -> dict[str, Any]:
             "deleted_count": deleted,
             "remote_url": program_remote_url(slug),
         }
+    except GitHubRequestError as exc:
+        return {
+            "ok": False,
+            "enabled": True,
+            "message": "Remote sync failed.",
+            "detail": str(exc),
+            "retryable": exc.retryable,
+        }
     except Exception as exc:
-        return {"ok": False, "enabled": True, "message": "Remote sync failed.", "detail": str(exc)}
+        return {"ok": False, "enabled": True, "message": "Remote sync failed.", "detail": str(exc), "retryable": False}
 
 
 def persist_paths(slug: str, relative_paths: list[str]) -> dict[str, Any]:
@@ -424,5 +486,13 @@ def persist_paths(slug: str, relative_paths: list[str]) -> dict[str, Any]:
             "deleted_count": deleted,
             "remote_url": program_remote_url(slug),
         }
+    except GitHubRequestError as exc:
+        return {
+            "ok": False,
+            "enabled": True,
+            "message": "Remote sync failed.",
+            "detail": str(exc),
+            "retryable": exc.retryable,
+        }
     except Exception as exc:
-        return {"ok": False, "enabled": True, "message": "Remote sync failed.", "detail": str(exc)}
+        return {"ok": False, "enabled": True, "message": "Remote sync failed.", "detail": str(exc), "retryable": False}

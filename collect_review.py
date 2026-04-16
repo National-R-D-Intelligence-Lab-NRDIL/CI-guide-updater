@@ -10,6 +10,7 @@ This script pulls the latest files and finalizes:
 
 import argparse
 import json
+import logging
 import os
 import time
 from typing import Optional
@@ -17,9 +18,11 @@ from typing import Optional
 import review
 import review_async
 from program_utils import make_slug
+from src.utils.logging_utils import configure_rotating_file_logging
 
 
 _APPROVED_STATES = {"approved", "done", "ready"}
+logger = logging.getLogger(__name__)
 
 
 def _sync_local_review_copy(program_dir: str, sources: list[dict], guide_md: str) -> None:
@@ -127,12 +130,12 @@ def main() -> None:
             review_id=args.review_id,
             require_approved=not args.allow_unapproved,
         )
-        print(message)
+        logger.info("collect_review_message=%s", message.replace("\n", " | "))
         if not done:
             raise SystemExit(1)
         return
 
-    print("Watching shared review package ...")
+    logger.info("watch_mode=enabled interval_seconds=%d", max(5, args.interval_seconds))
     while True:
         done, message = collect_once(
             program=args.program,
@@ -140,11 +143,12 @@ def main() -> None:
             review_id=args.review_id,
             require_approved=not args.allow_unapproved,
         )
-        print(message)
+        logger.info("collect_review_message=%s", message.replace("\n", " | "))
         if done:
             return
         time.sleep(max(5, args.interval_seconds))
 
 
 if __name__ == "__main__":
+    configure_rotating_file_logging(log_file="logs/collect_review.log")
     main()

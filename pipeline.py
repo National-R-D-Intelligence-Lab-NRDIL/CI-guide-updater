@@ -29,6 +29,7 @@ workflow:
 
 import argparse
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -46,6 +47,7 @@ import cite
 import differ
 import scraper
 import updater
+from src.utils.logging_utils import configure_rotating_file_logging
 from src.utils.source_policy import assert_public_sources
 
 try:
@@ -54,6 +56,8 @@ try:
     _PDF_AVAILABLE = True
 except Exception:
     _PDF_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +137,7 @@ def read_guide(path: str) -> str:
             result = mammoth.convert_to_markdown(fh)
             if result.messages:
                 for msg in result.messages:
-                    print(f"       [mammoth] {msg}")
+                    logger.warning("event=mammoth_message detail=%s", msg)
             return result.value
     if ext in (".md", ".txt"):
         with open(path, "r", encoding="utf-8") as fh:
@@ -435,21 +439,25 @@ def run_pipeline(
     if data_dir is None:
         data_dir = os.path.join(sources_root, "data")
 
-    print("[1/4] Loading sources and guide ...")
+    logger.info("step=1 action=load_inputs status=start")
     sources = load_sources(sources_config)
     guide_md = read_guide(guide_path)
     assert_public_sources(sources, context="pipeline")
-    print(f"       {len(sources)} source(s)  •  guide loaded from {guide_path}")
-    print(f"       state → {state_file}")
-    print(f"       data  → {data_dir}")
+    logger.info(
+        "step=1 action=load_inputs status=done sources=%d guide_path=%s state_file=%s data_dir=%s",
+        len(sources),
+        guide_path,
+        state_file,
+        data_dir,
+    )
 
     # -- 2. Scrape & diff -----------------------------------------------------
     all_diffs: list[tuple[str, list[str], str]] = []
     if refresh_citations_only:
         refresh_citations = True
-        print("[2/4] Skipping scrape/diff (--refresh-citations-only) ...")
+        logger.info("step=2 action=scrape_diff status=skipped reason=refresh_citations_only")
     else:
-        print("[2/4] Checking sources for updates ...")
+        logger.info("step=2 action=scrape_diff status=start")
         for src in sources:
             name, url = src["name"], src["url"]
             sections = src.get("sections", [])
@@ -463,7 +471,7 @@ def run_pipeline(
                     data_dir=data_dir,
                 )
             except Exception as exc:
-                print(f"       ⚠  {name}: scrape failed — {exc}")
+                logger.warning("step=2 source=%s status=scrape_failed error=%s", name, exc)
                 continue
 
             if changed:
@@ -474,26 +482,28 @@ def run_pipeline(
                     try:
                         sections = updater.classify_sections(new_text, guide_md)
                         if sections:
-                            print(
-                                f"       ℹ  {name}: auto-detected sections → {', '.join(sections)}"
+                            logger.info(
+                                "step=2 source=%s status=sections_autodetected sections=%s",
+                                name,
+                                ",".join(sections),
                             )
                     except Exception:
                         pass
 
                 all_diffs.append((name, sections, diff))
-                print(f"       ✓  {name}: changes detected")
+                logger.info("step=2 source=%s status=changed", name)
             else:
-                print(f"       ·  {name}: no changes")
+                logger.info("step=2 source=%s status=unchanged", name)
 
     if not all_diffs and not refresh_citations:
-        print("\n[result] All sources unchanged — guide is up to date.")
+        logger.info("result=up_to_date reason=no_source_changes")
         return False
 
     updated_md = guide_md
     did_llm_update = False
     if all_diffs:
         # -- 3. Update via LLM ------------------------------------------------
-        print(f"[3/4] Sending {len(all_diffs)} diff(s) to LLM ({model_name}) ...")
+        logger.info("step=3 action=llm_update status=start diffs=%d model=%s", len(all_diffs), model_name)
 
         diff_blocks: list[str] = []
         for name, sections, diff in all_diffs:
@@ -511,19 +521,19 @@ def run_pipeline(
             updated_md = updater.update_guide(guide_md, combined_diff, model_name)
             did_llm_update = True
         except EnvironmentError as exc:
-            print(f"\n[error] {exc}")
+            logger.error("step=3 action=llm_update status=error type=config error=%s", exc)
             return False
         except Exception as exc:
-            print(f"\n[error] LLM call failed — {exc}")
+            logger.error("step=3 action=llm_update status=error type=llm_call error=%s", exc)
             return False
     else:
-        print("[3/4] No source diffs found; refreshing citations on current guide ...")
+        logger.info("step=3 action=llm_update status=skipped reason=no_diffs")
 
     # -- 4. Optional citation pass --------------------------------------------
     evidence: list[dict] = []
     if with_citations:
         assert_public_sources(sources, context="pipeline citation step")
-        print("[4/5] Adding citations with guardrails ...")
+        logger.info("step=4 action=citation_pass status=start")
         snapshot_map: dict[str, str] = {}
         for src in sources:
             name = src["name"]
@@ -543,50 +553,50 @@ def run_pipeline(
             )
             if evidence:
                 updated_md = cited_md
-                print(f"       ✓  Added citations to {len(evidence)} claim(s)")
+                logger.info("step=4 action=citation_pass status=done claims=%d", len(evidence))
             else:
-                print("       ⚠  No validated citations added (continuing without citations)")
+                logger.warning("step=4 action=citation_pass status=no_validated_citations")
         except Exception as exc:
-            print(f"       ⚠  Citation pass failed ({exc}); continuing without citations")
+            logger.warning(
+                "step=4 action=citation_pass status=failed error=%s fallback=continue_without_citations",
+                exc,
+            )
 
     # -- 5. Write outputs ------------------------------------------------------
     step_label = "[5/5]" if with_citations else "[4/4]"
-    print(f"{step_label} Saving updated guide ...")
+    logger.info("step=%s action=save_outputs status=start", step_label.strip("[]"))
     os.makedirs(output_dir, exist_ok=True)
 
     md_path = os.path.join(output_dir, "sponsor_guide_updated.md")
     write_guide_md(md_path, updated_md)
-    print(f"       ✓  Markdown → {md_path}")
+    logger.info("step=5 artifact=markdown status=saved path=%s", md_path)
 
     docx_path = os.path.join(output_dir, "sponsor_guide_updated.docx")
     try:
         _md_to_docx(updated_md, docx_path)
-        print(f"       ✓  Word     → {docx_path}")
+        logger.info("step=5 artifact=docx status=saved path=%s", docx_path)
     except Exception as exc:
-        print(f"       ⚠  .docx export failed ({exc}); markdown saved OK")
+        logger.warning("step=5 artifact=docx status=failed error=%s", exc)
 
     pdf_path = os.path.join(output_dir, "sponsor_guide_updated.pdf")
     try:
         _md_to_pdf(updated_md, pdf_path)
-        print(f"       ✓  PDF      → {pdf_path}")
+        logger.info("step=5 artifact=pdf status=saved path=%s", pdf_path)
     except ImportError as exc:
-        print(f"       ⚠  PDF export skipped ({exc})")
+        logger.warning("step=5 artifact=pdf status=skipped reason=dependency_missing error=%s", exc)
     except Exception as exc:
-        print(f"       ⚠  PDF export failed ({exc}); other formats saved OK")
+        logger.warning("step=5 artifact=pdf status=failed error=%s", exc)
 
     if with_citations and evidence:
         evidence_path = os.path.join(output_dir, "sponsor_guide_evidence.json")
         with open(evidence_path, "w", encoding="utf-8") as fh:
             json.dump(evidence, fh, indent=2)
-        print(f"       ✓  Evidence → {evidence_path}")
+        logger.info("step=5 artifact=evidence status=saved path=%s", evidence_path)
 
     if did_llm_update:
-        print(
-            f"\n[result] Guide updated with changes from: "
-            f"{', '.join(n for n, _, _ in all_diffs)}"
-        )
+        logger.info("result=updated changed_sources=%s", ",".join(n for n, _, _ in all_diffs))
     else:
-        print("\n[result] Guide text unchanged; citations refreshed.")
+        logger.info("result=citations_refreshed")
     return True
 
 
@@ -596,6 +606,7 @@ def run_pipeline(
 
 def main() -> None:
     """Entry point when invoked from the command line."""
+    configure_rotating_file_logging(log_file=Path("logs") / "pipeline.log")
     load_dotenv(Path(__file__).resolve().parent / ".env")
 
     parser = argparse.ArgumentParser(

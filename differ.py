@@ -5,6 +5,9 @@ modifications in a format optimized for downstream LLM consumption.
 """
 
 import difflib
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def extract_changes(old_text: str, new_text: str) -> str:
@@ -107,29 +110,14 @@ if __name__ == "__main__":
         "to meritorious research.\n"
     )
 
-    print("=" * 60)
-    print("DIFF ENGINE — Demo Output")
-    print("=" * 60)
-    print()
-    print(extract_changes(old, new))
-    print()
-
-    print("-" * 60)
-    print("Edge case: old text is empty (new page)")
-    print("-" * 60)
-    print()
-    print(extract_changes("", "Brand-new page content here."))
-    print()
-
-    print("-" * 60)
-    print("Edge case: new text is empty (page removed)")
-    print("-" * 60)
-    print()
-    print(extract_changes("Some old content.", ""))
-    print()
-
-    print("-" * 60)
-    print("Edge case: both texts identical")
-    print("-" * 60)
-    print()
-    print(extract_changes(old, old))
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logger.info("demo=differ section=default_diff output=%s", extract_changes(old, new))
+    logger.info(
+        "demo=differ section=old_empty output=%s",
+        extract_changes("", "Brand-new page content here."),
+    )
+    logger.info(
+        "demo=differ section=new_empty output=%s",
+        extract_changes("Some old content.", ""),
+    )
+    logger.info("demo=differ section=identical output=%s", extract_changes(old, old))

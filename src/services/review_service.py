@@ -448,6 +448,12 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
             raise UserFacingError(
                 "Guide generation returned empty content. The LLM may have filtered the response."
             )
+        missing_sections = generator.find_missing_required_sections(guide_md)
+        if missing_sections:
+            raise UserFacingError(
+                "Generated guide is missing required sections.",
+                "Missing sections: " + ", ".join(missing_sections),
+            )
         guide_md = _sanitize_generated_guide_markdown(guide_md)
 
         evidence: list[dict] = []

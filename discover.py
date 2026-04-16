@@ -5,6 +5,7 @@ for a given grant program, then validates and classifies each URL.
 """
 
 import json
+import logging
 import re
 import sys
 from typing import Any, Optional, Set, Tuple
@@ -14,6 +15,7 @@ from google import genai
 from google.genai import types
 
 from src.utils.secrets import get_secret
+from src.utils.logging_utils import configure_rotating_file_logging
 from src.utils.source_policy import sanitize_program_for_prompt
 
 DISCOVERY_PROMPT_TEMPLATE = """\
@@ -101,6 +103,8 @@ ALTERNATIVE_FUNDING_SEED_CATALOG: list[dict[str, Any]] = [
         "source_authority": 0.9,
     },
 ]
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_response_text(response) -> str:
@@ -232,9 +236,8 @@ def discover_sources(program: str) -> list[dict]:
         raw = _extract_response_text(response)
     except RuntimeError:
         # Google Search grounding sometimes yields no text parts; retry without tools.
-        print(
-            "[discover] No text in grounded response; retrying without Google Search ...",
-            file=sys.stderr,
+        logger.warning(
+            "event=discover_retry_without_grounding reason=no_text_from_grounded_response"
         )
         response = client.models.generate_content(
             model="gemini-2.5-flash",
@@ -496,24 +499,28 @@ def build_sources_json(
 
 
 if __name__ == "__main__":
-    import sys
-
     program = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "NSF CAREER award"
+    configure_rotating_file_logging(log_file="logs/discover.log")
 
-    print(f"Discovering sources for: {program}\n")
+    logger.info("discover_start program=%s", program)
 
-    print("[1/3] Asking Gemini with Google Search grounding ...")
+    logger.info("step=1 action=query_model status=start")
     candidates = discover_sources(program)
-    print(f"       Found {len(candidates)} candidate(s)\n")
+    logger.info("step=1 action=query_model status=done candidates=%d", len(candidates))
 
-    print("[2/3] Validating URLs ...")
+    logger.info("step=2 action=validate_urls status=start")
     candidates = validate_urls(candidates)
     for c in candidates:
         status = "✓" if c.get("reachable") else "✗"
         ct = c.get("content_type", "?")
-        print(f"  {status}  [{ct:20s}]  {c['label']:30s}  {c['url']}")
-    print()
+        logger.info(
+            "step=2 candidate_status=%s content_type=%s label=%s url=%s",
+            status,
+            ct,
+            c["label"],
+            c["url"],
+        )
 
-    print("[3/3] Building sources.json format ...")
+    logger.info("step=3 action=build_sources_json status=start")
     sources = build_sources_json(program, candidates)
-    print(json.dumps(sources, indent=2))
+    logger.info("step=3 action=build_sources_json status=done sources=%s", json.dumps(sources))
