@@ -10,13 +10,11 @@ Configured for Google Gemini via its OpenAI-compatible endpoint.  Set
 
 from pathlib import Path
 
-from dotenv import load_dotenv
 from openai import APIConnectionError, APIStatusError, OpenAI
 
 from src.utils.secrets import get_secret
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
-load_dotenv(_PROJECT_ROOT / ".env")
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -97,7 +95,10 @@ def update_guide(
         temperature=0.2,
     )
 
-    return response.choices[0].message.content
+    content = response.choices[0].message.content
+    if not content:
+        raise ValueError("LLM returned empty content")
+    return content
 
 
 def classify_sections(
@@ -153,7 +154,10 @@ def classify_sections(
 
     import json as _json
 
-    raw = response.choices[0].message.content.strip()
+    content = response.choices[0].message.content
+    if not content:
+        raise ValueError("LLM returned empty content")
+    raw = content.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
     try:

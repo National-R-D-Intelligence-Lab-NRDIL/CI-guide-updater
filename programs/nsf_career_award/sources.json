@@ -4,7 +4,8 @@
     "url": "https://www.nsf.gov/funding/opportunities/career-faculty-early-career-development-program",
     "sections": [
       "Program Overview"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NSF_CAREER_award_CAREER_Program_FAQ",
@@ -14,7 +15,8 @@
       "Key Dates",
       "Award Size",
       "FAQ"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NSF_CAREER_award_NSF_Proposal_Award_Guide_PAPPG_24_1",
@@ -24,7 +26,8 @@
       "Resources",
       "Tips",
       "Review Criteria"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NSF_CAREER_award_New_Source",
@@ -33,6 +36,7 @@
       "3. Key Dates",
       "7. Application Requirements",
       "9. Resources"
-    ]
+    ],
+    "data_class": "public"
   }
 ]

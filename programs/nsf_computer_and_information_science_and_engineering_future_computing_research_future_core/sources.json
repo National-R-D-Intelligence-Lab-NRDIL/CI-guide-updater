@@ -10,7 +10,8 @@
       "Review Criteria",
       "Application Requirements",
       "FAQ"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NSF_Computer_and_Information_Science_and_Engineering_Future_Computing_Research_Future_CoRe_PAPPG_24_1_Guide",
@@ -23,6 +24,7 @@
       "Resources",
       "Tips",
       "FAQ"
-    ]
+    ],
+    "data_class": "public"
   }
 ]

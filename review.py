@@ -171,7 +171,7 @@ def _add_new_link(
     else:
         print("  Could not auto-detect sections (will be inferred at update time).")
 
-    entry = {"name": name, "url": final_url, "sections": sections}
+    entry = {"name": name, "url": final_url, "sections": sections, "data_class": "public"}
     print(f"  ✓ Added: {name}")
     return entry
 

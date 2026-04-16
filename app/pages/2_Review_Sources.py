@@ -239,6 +239,8 @@ if rows:
                 meta_col1, meta_col2 = st.columns(2)
                 meta_col1.write(f"**Status:** {selected_row.get('status', 'unreviewed').replace('_', ' ')}")
                 meta_col2.write(f"**Origin:** {selected_row.get('source_origin', 'auto')}")
+                if selected_row.get("data_class"):
+                    st.write(f"**Data class:** {selected_row['data_class']}")
                 if selected_row.get("title"):
                     st.write(f"**Title:** {selected_row['title']}")
                 st.write(f"**URL:** {selected_row['url']}")
@@ -312,6 +314,12 @@ st.markdown("### Add a missing source")
 with st.form("add_manual_source_form", clear_on_submit=True):
     manual_url = st.text_input("URL (required)", placeholder="https://...")
     manual_title = st.text_input("Label/Title (optional)", placeholder="Program FAQ")
+    manual_data_class = st.selectbox(
+        "Data class",
+        options=["public", "internal"],
+        index=0,
+        help="Public sources can be sent to the LLM. Internal sources are recorded for review but must not reach the model.",
+    )
     manual_section = st.text_input(
         "Mapped section (optional)",
         placeholder="e.g. Eligibility",
@@ -330,6 +338,7 @@ if add_manual_clicked:
         title=manual_title,
         mapped_section=manual_section,
         reviewer_note=manual_note,
+        data_class=manual_data_class,
     )
     if added["ok"]:
         st.session_state["manual_source_feedback"] = "Manual source added for review."

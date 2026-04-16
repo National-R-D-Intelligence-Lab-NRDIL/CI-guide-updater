@@ -4,16 +4,11 @@ Scrapes all discovered source pages and asks Gemini to produce a
 first-draft Sponsor Guide in markdown.
 """
 
-from pathlib import Path
-
-from dotenv import load_dotenv
 from openai import OpenAI
 
 import scraper
 from src.utils.secrets import get_secret
-
-_PROJECT_ROOT = Path(__file__).resolve().parent
-load_dotenv(_PROJECT_ROOT / ".env")
+from src.utils.source_policy import assert_public_sources
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -64,6 +59,7 @@ def generate_guide(
     api_key = get_secret("GEMINI_API_KEY")
     if not api_key:
         raise EnvironmentError("GEMINI_API_KEY is not set.")
+    assert_public_sources(sources, context="guide generation")
 
     source_texts: list[str] = []
     for src in sources:
@@ -99,4 +95,7 @@ def generate_guide(
         temperature=0.2,
     )
 
-    return response.choices[0].message.content
+    content = response.choices[0].message.content
+    if not content:
+        raise ValueError("LLM returned empty content")
+    return content

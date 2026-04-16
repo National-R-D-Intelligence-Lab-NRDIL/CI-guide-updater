@@ -4,7 +4,8 @@
     "url": "https://www.nsf.gov/funding/opportunities/dmref-designing-materials-revolutionize-engineer-our-future",
     "sections": [
       "Program Overview"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NSF_Designing_Materials_to_Revolutionize_and_Engineer_our_Future_DMREF_NSF_25_508_Solicitation",
@@ -17,7 +18,8 @@
       "Review Criteria",
       "Application Requirements",
       "Tips"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NSF_Designing_Materials_to_Revolutionize_and_Engineer_our_Future_DMREF_NSF_PAPPG",
@@ -25,6 +27,7 @@
     "sections": [
       "Application Requirements",
       "Tips"
-    ]
+    ],
+    "data_class": "public"
   }
 ]

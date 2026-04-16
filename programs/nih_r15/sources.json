@@ -7,7 +7,8 @@
       "Review and Award Cycles",
       "Award Size",
       "R15 Resources"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_R15_NOFO_PAR25_148",
@@ -17,7 +18,8 @@
       "Standard Due Dates",
       "Eligibility",
       "Award Size"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_R15_NOFO_PAR25_134",
@@ -27,7 +29,8 @@
       "Standard Due Dates",
       "Eligibility",
       "Award Size"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_R15_Research_Areas_by_IC",
@@ -35,7 +38,8 @@
     "sections": [
       "Organization and Structure",
       "R15 Resources"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_R15_FAQs",
@@ -44,14 +48,16 @@
       "Eligibility",
       "Key Application Components",
       "R15 Resources"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Institutes_List",
     "url": "https://www.nih.gov/institutes-nih/list-institutes-centers",
     "sections": [
       "Organization and Structure"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Review_Process",
@@ -59,7 +65,8 @@
     "sections": [
       "How Proposals are Reviewed",
       "The Two-Level Review Process"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Page_Limits",
@@ -67,21 +74,24 @@
     "sections": [
       "Page Limit",
       "Key Application Components"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_ESI_Policy",
     "url": "https://grants.nih.gov/policy-and-compliance/policy-topics/early-stage-investigators",
     "sections": [
       "Early Career and Special Programs"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Katz_ESI_R01",
     "url": "https://grants.nih.gov/funding/activity-codes/R01/katz-esi-r01",
     "sections": [
       "Early Career and Special Programs"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Biosketch_Form",
@@ -89,20 +99,23 @@
     "sections": [
       "Key Application Components",
       "R15 Resources"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Biosketch_FAQs",
     "url": "https://grants.nih.gov/faqs#/common-forms-biographical-sketch-current-pending-ssupport.htm",
     "sections": [
       "R15 Resources"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Matchmaker",
     "url": "https://grants.nih.gov/news-events/nih-extramural-nexus-news/2026/02/make-a-perfect-pair-with-nih-matchmaker",
     "sections": [
       "Tips for Engagement"
-    ]
+    ],
+    "data_class": "public"
   }
 ]

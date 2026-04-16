@@ -16,6 +16,7 @@ from src.services.persistence_service import (
     persist_paths,
 )
 from src.utils.errors import UserFacingError, format_exception
+from src.utils.source_policy import assert_public_sources, normalize_and_validate_public_url
 
 
 def list_program_slugs() -> list[str]:
@@ -225,6 +226,7 @@ def add_manual_source(
     title: str = "",
     mapped_section: str = "",
     reviewer_note: str = "",
+    data_class: str = "public",
 ) -> dict[str, Any]:
     """Persist a manually added source in a review sidecar JSON file."""
     try:
@@ -232,6 +234,13 @@ def add_manual_source(
         clean_url = url.strip()
         if not clean_url:
             raise UserFacingError("URL is required.")
+        try:
+            clean_url = normalize_and_validate_public_url(clean_url, context="manual source")
+        except ValueError as exc:
+            raise UserFacingError("Invalid or untrusted URL.", str(exc)) from exc
+        clean_data_class = str(data_class).strip().lower()
+        if clean_data_class not in {"public", "internal"}:
+            raise UserFacingError("Invalid data class.", "Choose public or internal.")
 
         review_dir = _review_dir(slug)
         review_dir.mkdir(parents=True, exist_ok=True)
@@ -250,16 +259,18 @@ def add_manual_source(
             suffix += 1
 
         sections = [mapped_section.strip()] if mapped_section.strip() else []
+        review_status = "approved" if clean_data_class == "public" else "pending_manual_review"
         entry = {
             "name": name,
             "url": clean_url,
             "title": title.strip(),
             "sections": sections,
+            "data_class": clean_data_class,
             "mapped_section": mapped_section.strip(),
             "note": reviewer_note.strip(),
             "source_origin": "manual",
             "created_at": _utc_now(),
-            "review_status": "approved",
+            "review_status": review_status,
         }
         manual_sources.append(entry)
         manual_path.write_text(json.dumps(manual_sources, indent=2), encoding="utf-8")
@@ -304,6 +315,7 @@ def load_review_context(slug: str) -> dict[str, Any]:
                     "name": name,
                     "url": src.get("url", ""),
                     "sections": src.get("sections", []),
+                    "data_class": src.get("data_class", "public"),
                     "status": decision.get("status", "unreviewed"),
                     "notes": decision.get("notes", ""),
                     "source_origin": "auto",
@@ -316,17 +328,19 @@ def load_review_context(slug: str) -> dict[str, Any]:
         for src in manual_sources:
             name = src.get("name", "")
             decision = decisions.get(name, {})
+            metadata = {k: v for k, v in src.items() if k not in _SOURCE_BASE_FIELDS}
             rows.append(
                 {
                     "name": name,
                     "url": src.get("url", ""),
                     "sections": src.get("sections", []),
+                    "data_class": src.get("data_class", "public"),
                     "status": decision.get("status", src.get("review_status", "approved")),
                     "notes": decision.get("notes", src.get("note", "")),
                     "source_origin": "manual",
                     "title": src.get("title", ""),
                     "created_at": src.get("created_at", ""),
-                    "metadata": {},
+                    "metadata": metadata,
                 }
             )
 
@@ -376,6 +390,12 @@ def finalize_review(slug: str, include_unreviewed: bool = False) -> dict[str, An
             if status == "approved" or (
                 include_unreviewed and status in {"unreviewed", "pending_manual_review"}
             ):
+                data_class = str(row.get("data_class", "")).strip().lower() or "public"
+                if data_class != "public":
+                    raise UserFacingError(
+                        "Internal sources cannot be finalized into sources.json.",
+                        f"Source '{row.get('name', '')}' is marked data_class='{data_class}'.",
+                    )
                 approved_sources.append(
                     {
                         "name": row["name"],
@@ -421,6 +441,7 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
         sources = json.loads(sources_path.read_text(encoding="utf-8"))
         if not isinstance(sources, list) or not sources:
             raise UserFacingError("Approved sources file is empty or invalid.")
+        assert_public_sources(sources, context="review first draft generation")
 
         guide_md = generator.generate_guide(sources, slug)
         if not isinstance(guide_md, str) or not guide_md.strip():
@@ -432,6 +453,7 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
         evidence: list[dict] = []
         citation_count = 0
         if with_citations:
+            assert_public_sources(sources, context="review citation step")
             snapshot_map: dict[str, str] = {}
             for src in sources:
                 try:

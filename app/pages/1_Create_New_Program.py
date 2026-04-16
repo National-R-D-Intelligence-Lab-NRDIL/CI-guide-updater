@@ -21,6 +21,7 @@ from app.components.status import render_storage_status
 from app.components.tables import show_table
 from app.state.session import init_session_state
 from src.services.bootstrap_service import create_new_program
+from src.utils.source_policy import sanitize_program_for_prompt
 
 
 st.set_page_config(page_title="Create New Program", layout="wide")
@@ -138,11 +139,18 @@ with st.form("create_program_form"):
     )
 
 if submitted:
+    sanitized_program_name = sanitize_program_for_prompt(program_name)
+    if not sanitized_program_name:
+        st.error("Program name is required.")
+        st.stop()
+    if sanitized_program_name != program_name:
+        st.caption("Program name was sanitized for prompt safety before discovery.")
+
     monitor_sectors = [item.strip() for item in monitor_sectors_text.split(",") if item.strip()]
     monitor_regions = [item.strip() for item in monitor_regions_text.split(",") if item.strip()]
     with st.status("Running bootstrap steps...", expanded=True) as status:
         result = create_new_program(
-            program_name,
+            sanitized_program_name,
             async_review=async_review,
             shared_review_dir=shared_review_dir,
             notify_webhook_url=notify_webhook_url,

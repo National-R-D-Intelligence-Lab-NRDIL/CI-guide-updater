@@ -21,7 +21,8 @@
     "eligibility_summary": "",
     "confidence_score": 1.0,
     "priority_score": 100,
-    "opportunity_title": "Wellcome Funding Opportunities"
+    "opportunity_title": "Wellcome Funding Opportunities",
+    "data_class": "public"
   },
   {
     "name": "Corporate_and_foundation_funding_for_AI_enabled_diagnostics_Gates_Foundation_Grant_Opportunities",
@@ -45,7 +46,8 @@
     "eligibility_summary": "",
     "confidence_score": 1.0,
     "priority_score": 100,
-    "opportunity_title": "Gates Foundation Grant Opportunities"
+    "opportunity_title": "Gates Foundation Grant Opportunities",
+    "data_class": "public"
   },
   {
     "name": "Corporate_and_foundation_funding_for_AI_enabled_diagnostics_Pfizer_Research_Partnerships",
@@ -68,7 +70,8 @@
     "eligibility_summary": "",
     "confidence_score": 0.98,
     "priority_score": 100,
-    "opportunity_title": "Pfizer Research Partnerships"
+    "opportunity_title": "Pfizer Research Partnerships",
+    "data_class": "public"
   },
   {
     "name": "Corporate_and_foundation_funding_for_AI_enabled_diagnostics_Roche_Partnering_and_Innovation",
@@ -91,7 +94,8 @@
     "eligibility_summary": "",
     "confidence_score": 0.98,
     "priority_score": 100,
-    "opportunity_title": "Roche Partnering and Innovation"
+    "opportunity_title": "Roche Partnering and Innovation",
+    "data_class": "public"
   },
   {
     "name": "Corporate_and_foundation_funding_for_AI_enabled_diagnostics_Program_Overview",
@@ -108,16 +112,19 @@
     "eligibility_summary": "",
     "confidence_score": 0.82,
     "priority_score": 100,
-    "opportunity_title": "Program Overview"
+    "opportunity_title": "Program Overview",
+    "data_class": "public"
   },
   {
     "name": "corporate_and_foundation_funding_for_ai_enabled_diagnostics_manual_grand_challenges_about_page",
     "url": "https://www.grandchallenges.org/about",
-    "sections": []
+    "sections": [],
+    "data_class": "public"
   },
   {
     "name": "corporate_and_foundation_funding_for_ai_enabled_diagnostics_manual_grand_challenges_opportunities",
     "url": "https://www.grandchallenges.org/grant-opportunities",
-    "sections": []
+    "sections": [],
+    "data_class": "public"
   }
 ]

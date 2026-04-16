@@ -7,10 +7,13 @@ changes via SHA-256 hashing, and persists state between runs.
 import hashlib
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
+
+from src.utils.source_policy import normalize_and_validate_public_url
 
 STATE_FILE = "state.json"
 DATA_DIR = "data"
@@ -28,7 +31,8 @@ def fetch_and_clean_text(url: str) -> str:
     Raises:
         requests.HTTPError: If the server returns a non-2xx status code.
     """
-    response = requests.get(url, timeout=30)
+    safe_url = normalize_and_validate_public_url(url, context="scraper")
+    response = requests.get(safe_url, timeout=30)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -112,7 +116,8 @@ def check_for_updates(
         return False
 
     os.makedirs(data_dir, exist_ok=True)
-    data_path = os.path.join(data_dir, f"{name}_latest.txt")
+    safe_name = re.sub(r"[^A-Za-z0-9_-]", "_", name)
+    data_path = os.path.join(data_dir, f"{safe_name}_latest.txt")
     with open(data_path, "w", encoding="utf-8") as fh:
         fh.write(text)
 

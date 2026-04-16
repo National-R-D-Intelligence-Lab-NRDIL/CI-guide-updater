@@ -15,6 +15,7 @@ from openai import OpenAI
 
 import updater
 from src.utils.secrets import get_secret
+from src.utils.source_policy import assert_public_sources
 
 
 def _tokenize(text: str) -> set[str]:
@@ -154,6 +155,8 @@ def add_citations(
     api_key = get_secret("GEMINI_API_KEY")
     if not api_key:
         return guide_md, []
+
+    assert_public_sources(sources, context="citation generation")
 
     source_url_map = {
         s["name"]: s["url"]

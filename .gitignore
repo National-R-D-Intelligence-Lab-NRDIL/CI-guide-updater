@@ -14,6 +14,7 @@ programs/**/state.json
 programs/**/data/
 programs/**/review/
 programs/**/review_packages/
+programs/**/internal_sources.json
 
 # Guide documents (working files, not source code)
 *.docx

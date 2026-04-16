@@ -6,7 +6,8 @@
       "Program Overview",
       "Eligibility",
       "Award Size"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Research_Project_R01_Parent_NOFOs_List",
@@ -17,7 +18,8 @@
       "Eligibility",
       "Award Size",
       "Application Requirements"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Research_Project_R01_Parent_R01_Clinical_Trial_Not_Allowed",
@@ -29,7 +31,8 @@
       "Application Requirements",
       "Key Dates",
       "Review Criteria"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Research_Project_R01_Early_Stage_Investigator_Policies",
@@ -37,7 +40,8 @@
     "sections": [
       "Eligibility",
       "Tips"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Research_Project_R01_NIH_Grants_Policy_Statement",
@@ -48,14 +52,16 @@
       "Resources",
       "Tips",
       "Eligibility"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Research_Project_R01_Standard_Due_Dates",
     "url": "https://grants.nih.gov/grants-process/submit/submission-policies/standard-due-dates",
     "sections": [
       "Key Dates"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NIH_Research_Project_R01_NIH_Guide_for_Grants_and_Contracts",
@@ -63,6 +69,7 @@
     "sections": [
       "Resources",
       "Tips"
-    ]
+    ],
+    "data_class": "public"
   }
 ]

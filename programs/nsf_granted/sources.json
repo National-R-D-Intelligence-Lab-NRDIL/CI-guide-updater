@@ -6,7 +6,8 @@
       "Application Requirements",
       "Tips",
       "Resources"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NSF_GRANTED_NSF_Proposal_Award_Policies_Procedures_Guide_PAPPG",
@@ -18,16 +19,19 @@
       "Review Criteria",
       "Resources",
       "Tips"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "nsf_granted_manual_program_page",
     "url": "https://www.nsf.gov/od/oia/granted",
-    "sections": []
+    "sections": [],
+    "data_class": "public"
   },
   {
     "name": "nsf_granted_manual_www_nsf_gov",
     "url": "https://www.nsf.gov/funding/opportunities/granted-growing-research-access-nationally-transformative-economic",
-    "sections": []
+    "sections": [],
+    "data_class": "public"
   }
 ]

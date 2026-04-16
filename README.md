@@ -291,12 +291,14 @@ Each program has a `sources.json` file with a list of approved source pages:
   {
     "name": "NIH_R15_Main_Page",
     "url": "https://grants.nih.gov/grants/funding/r15.htm",
-    "sections": []
+    "sections": [],
+    "data_class": "public"
   },
   {
     "name": "NIH_R15_Due_Dates",
     "url": "https://grants.nih.gov/grants/how-to-apply-application-guide/due-dates.htm",
-    "sections": []
+    "sections": [],
+    "data_class": "public"
   }
 ]
 ```
@@ -307,6 +309,7 @@ Field summary:
 | --- | --- | --- |
 | `name` | Yes | Stable ID used for snapshot filenames |
 | `url` | Yes | The source page to scrape |
+| `data_class` | Yes | Set to `public` for any source that may be sent to the LLM |
 | `sections` | No | Leave empty unless you want to specify guide sections manually |
 
 When the Alternative Funding Intelligence Monitor is enabled, entries in `sources.json` may also include optional metadata fields:

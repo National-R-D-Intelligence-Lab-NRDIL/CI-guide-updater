@@ -46,6 +46,7 @@ import cite
 import differ
 import scraper
 import updater
+from src.utils.source_policy import assert_public_sources
 
 try:
     import markdown as _markdown_lib
@@ -65,7 +66,7 @@ def load_sources(config_path: str) -> list[dict]:
     Expected format::
 
         [
-          {"name": "NIH_R15", "url": "https://..."},
+          {"name": "NIH_R15", "url": "https://...", "data_class": "public"},
           ...
         ]
 
@@ -73,10 +74,42 @@ def load_sources(config_path: str) -> list[dict]:
         config_path: Path to the JSON file.
 
     Returns:
-        List of source dicts, each containing ``name`` and ``url``.
+        List of validated source dicts with ``name``, ``url``, ``sections``,
+        and ``data_class``.
     """
     with open(config_path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+        sources = json.load(fh)
+
+    if not isinstance(sources, list):
+        raise ValueError("sources.json must contain a JSON array")
+
+    for idx, src in enumerate(sources):
+        if not isinstance(src, dict):
+            raise ValueError(f"Source at index {idx} must be an object")
+
+        name = str(src.get("name", "")).strip()
+        url = str(src.get("url", "")).strip()
+        if not name or not url:
+            raise ValueError(f"Source at index {idx} must include non-empty 'name' and 'url'")
+
+        sections = src.get("sections", [])
+        if sections is None:
+            sections = []
+        if not isinstance(sections, list):
+            raise ValueError(f"Source at index {idx} must use a list for 'sections'")
+
+        data_class = str(src.get("data_class", "")).strip().lower()
+        if data_class != "public":
+            raise ValueError(
+                f"Source '{name}' at index {idx} must set data_class to 'public' before it can be used."
+            )
+
+        src["name"] = name
+        src["url"] = url
+        src["sections"] = sections
+        src["data_class"] = "public"
+
+    return sources
 
 
 def read_guide(path: str) -> str:
@@ -405,6 +438,7 @@ def run_pipeline(
     print("[1/4] Loading sources and guide ...")
     sources = load_sources(sources_config)
     guide_md = read_guide(guide_path)
+    assert_public_sources(sources, context="pipeline")
     print(f"       {len(sources)} source(s)  •  guide loaded from {guide_path}")
     print(f"       state → {state_file}")
     print(f"       data  → {data_dir}")
@@ -473,6 +507,7 @@ def run_pipeline(
         combined_diff = "\n\n".join(diff_blocks)
 
         try:
+            assert_public_sources(sources, context="pipeline update step")
             updated_md = updater.update_guide(guide_md, combined_diff, model_name)
             did_llm_update = True
         except EnvironmentError as exc:
@@ -487,6 +522,7 @@ def run_pipeline(
     # -- 4. Optional citation pass --------------------------------------------
     evidence: list[dict] = []
     if with_citations:
+        assert_public_sources(sources, context="pipeline citation step")
         print("[4/5] Adding citations with guardrails ...")
         snapshot_map: dict[str, str] = {}
         for src in sources:

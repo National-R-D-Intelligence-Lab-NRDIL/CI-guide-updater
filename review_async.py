@@ -12,6 +12,8 @@ import shutil
 from datetime import datetime, timezone
 from typing import Optional
 
+from src.utils.source_policy import assert_public_sources
+
 
 def _utc_now() -> str:
     """Return an ISO 8601 UTC timestamp."""
@@ -132,5 +134,6 @@ def load_review_outputs(shared_package_dir: str) -> tuple[list[dict], str]:
         if "sections" not in src:
             src["sections"] = []
 
-    return sources, guide_md
+    assert_public_sources(sources, context="review package loading")
 
+    return sources, guide_md

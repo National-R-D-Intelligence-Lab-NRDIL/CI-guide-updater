@@ -10,7 +10,8 @@
       "Review Criteria",
       "Application Requirements",
       "Tips"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "NSF_AI_Ready_America_NSF_PAPPG_Guide",
@@ -20,16 +21,19 @@
       "Review Criteria",
       "Resources",
       "Tips"
-    ]
+    ],
+    "data_class": "public"
   },
   {
     "name": "nsf_ai_ready_america_manual_solicitation",
     "url": "https://www.nsf.gov/funding/opportunities/techaccess-ai-ready-america/nsf26-508/solicitation",
-    "sections": []
+    "sections": [],
+    "data_class": "public"
   },
   {
     "name": "nsf_ai_ready_america_manual_www_nsf_gov",
     "url": "https://www.nsf.gov/news/nsf-initiative-aims-make-every-american-worker-business",
-    "sections": []
+    "sections": [],
+    "data_class": "public"
   }
 ]

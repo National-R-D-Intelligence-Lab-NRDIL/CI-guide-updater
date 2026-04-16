@@ -7,18 +7,14 @@ for a given grant program, then validates and classifies each URL.
 import json
 import re
 import sys
-from pathlib import Path
 from typing import Any, Optional, Set, Tuple
 
 import requests
-from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
 from src.utils.secrets import get_secret
-
-_PROJECT_ROOT = Path(__file__).resolve().parent
-load_dotenv(_PROJECT_ROOT / ".env")
+from src.utils.source_policy import sanitize_program_for_prompt
 
 DISCOVERY_PROMPT_TEMPLATE = """\
 Find the most important official web pages for the "{program}" \
@@ -218,7 +214,10 @@ def discover_sources(program: str) -> list[dict]:
 
     client = genai.Client(api_key=api_key)
 
-    prompt = DISCOVERY_PROMPT_TEMPLATE.format(program=program)
+    prompt_program = sanitize_program_for_prompt(program)
+    if not prompt_program:
+        raise ValueError("Program name is required for source discovery.")
+    prompt = DISCOVERY_PROMPT_TEMPLATE.format(program=prompt_program)
 
     response = client.models.generate_content(
         model="gemini-2.5-flash",
@@ -473,6 +472,7 @@ def build_sources_json(
             "name": f"{prefix}_{_make_name(entry['label'])}",
             "url": entry["url"],
             "sections": entry.get("sections", []),
+            "data_class": "public",
         }
         if include_metadata:
             for key in (
