@@ -35,12 +35,10 @@ You do not need to manually map links to guide sections. The tool reads the sour
 ### 1. Install dependencies
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
+pip3 install -r requirements.txt
 ```
 
-Use Python 3.11 or newer. The CI workflow is pinned to Python 3.11, and local development should match that baseline.
+On macOS, use `python3` and `pip3`. A bare `python` command is often not available unless you are inside a virtual environment.
 
 ### 2. Add your Gemini API key
 
@@ -63,6 +61,65 @@ To open the Streamlit app:
 ```bash
 streamlit run app/main.py
 ```
+
+## Authentication
+
+By default, authentication is **off** — the app runs without any login check when there is no `[auth]` section in Streamlit secrets. This is the right behaviour for local development and CLI usage.
+
+When you deploy to Streamlit Cloud and want to restrict access to a named list of institutional email addresses, follow these steps.
+
+### 1. Create Google OAuth credentials
+
+1. Open [Google Cloud Console](https://console.cloud.google.com) and select (or create) a project.
+2. Go to **APIs & Services > Credentials**.
+3. Click **Create credentials > OAuth 2.0 Client ID** and choose **Web application**.
+4. Under **Authorized redirect URIs**, add:
+   - Local dev: `http://localhost:8501/oauth2callback`
+   - Production: `https://<your-app>.streamlit.app/oauth2callback`
+5. Copy the **Client ID** and **Client Secret**.
+
+### 2. Configure secrets
+
+Copy the template and fill in your values:
+
+```bash
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+```
+
+Edit `.streamlit/secrets.toml`:
+
+```toml
+[auth]
+redirect_uri   = "http://localhost:8501/oauth2callback"
+cookie_secret  = "a-long-random-string"   # python3 -c "import secrets; print(secrets.token_hex(32))"
+client_id      = "YOUR_CLIENT_ID.apps.googleusercontent.com"
+client_secret  = "YOUR_CLIENT_SECRET"
+server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
+
+[allowed_users]
+emails = [
+    "alice@yourinstitution.edu",
+    "bob@yourinstitution.edu",
+]
+```
+
+`secrets.toml` is listed in `.gitignore` and must never be committed.
+
+### 3. On Streamlit Cloud
+
+Paste the same key/value pairs into **App settings > Secrets** in the Streamlit Cloud dashboard. Update `redirect_uri` to your production URL first.
+
+### Behaviour at runtime
+
+| Situation | What the user sees |
+| --- | --- |
+| No `[auth]` in secrets | App loads normally, no login required (dev mode) |
+| `[auth]` present, not signed in | Sign-in page with Google button |
+| Signed in, email on allowlist | App loads normally |
+| Signed in, email NOT on allowlist | Access-denied message with sign-out button |
+| `[allowed_users]` section absent | Any authenticated Google account is allowed |
+
+Users see a **Sign out** button at the bottom of the sidebar when they are signed in.
 
 ## Streamlit App
 
