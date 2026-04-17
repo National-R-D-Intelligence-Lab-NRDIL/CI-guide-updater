@@ -35,10 +35,12 @@ You do not need to manually map links to guide sections. The tool reads the sour
 ### 1. Install dependencies
 
 ```bash
-pip3 install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-On macOS, use `python3` and `pip3`. A bare `python` command is often not available unless you are inside a virtual environment.
+Use Python 3.11 or newer. The CI workflow is pinned to Python 3.11, and local development should match that baseline.
 
 ### 2. Add your Gemini API key
 
@@ -255,15 +257,15 @@ The citation layer is guarded so it only uses approved source names and checks t
 Run the full test suite:
 
 ```bash
-python3 -m unittest discover -s tests
+python3 -m pytest tests/
 ```
 
 Run focused guardrail suites:
 
 ```bash
-python3 -m unittest tests/test_cite.py
-python3 -m unittest tests/test_differ.py
-python3 -m unittest tests/test_scraper.py
+python3 -m pytest tests/test_cite.py
+python3 -m pytest tests/test_differ.py
+python3 -m pytest tests/test_scraper.py
 ```
 
 These tests protect key hallucination and regression boundaries:
@@ -271,6 +273,8 @@ These tests protect key hallucination and regression boundaries:
 - `tests/test_cite.py` validates citation guardrails, including lexical-overlap threshold behavior.
 - `tests/test_differ.py` validates diff edge cases and normal change extraction.
 - `tests/test_scraper.py` validates first-stage scraping behavior, state persistence, hash comparisons, and snapshot filename sanitization.
+
+Automated CI runs `python -m pytest tests/` on every push to `main` and on pull requests targeting `main` via `.github/workflows/ci.yml`.
 
 ## Project Structure
 
