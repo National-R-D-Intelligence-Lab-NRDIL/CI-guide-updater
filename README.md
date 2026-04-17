@@ -250,6 +250,28 @@ python3 pipeline.py programs/<slug>/guide.md \
 
 The citation layer is guarded so it only uses approved source names and checks the generated references against the scraped text. If no website changes are found, the pipeline exits without overwriting the guide.
 
+## Unit Tests
+
+Run the full test suite:
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+Run focused guardrail suites:
+
+```bash
+python3 -m unittest tests/test_cite.py
+python3 -m unittest tests/test_differ.py
+python3 -m unittest tests/test_scraper.py
+```
+
+These tests protect key hallucination and regression boundaries:
+
+- `tests/test_cite.py` validates citation guardrails, including lexical-overlap threshold behavior.
+- `tests/test_differ.py` validates diff edge cases and normal change extraction.
+- `tests/test_scraper.py` validates first-stage scraping behavior, state persistence, hash comparisons, and snapshot filename sanitization.
+
 ## Project Structure
 
 ```text
