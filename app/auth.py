@@ -9,7 +9,7 @@ Setup
 -----
 1. Add ``authlib`` to your environment (``pip install "streamlit[auth]"``).
 2. Copy ``.streamlit/secrets.toml.example`` to ``.streamlit/secrets.toml`` and
-   fill in your Google OAuth credentials.
+   fill in your Microsoft Azure AD credentials.
 3. On Streamlit Cloud, paste the same values into **App settings > Secrets**.
 4. Add allowed email addresses to the ``[allowed_users]`` section of secrets.
 """
@@ -37,13 +37,13 @@ def _allowed_emails() -> set[str]:
 
 
 def require_login() -> None:
-    """Gate every page behind Google sign-in and an optional email allowlist.
+    """Gate every page behind Microsoft sign-in and an optional email allowlist.
 
     Behaviour
     ---------
     - **No ``[auth]`` in secrets** → no-op (local dev, CLI usage).
     - **Not logged in** → renders a sign-in page and stops the script.
-    - **Logged in, no allowlist configured** → passes through (any Google account).
+    - **Logged in, no allowlist configured** → passes through (any account in the tenant).
     - **Logged in, not on allowlist** → renders an access-denied message and stops.
     - **Logged in and allowed** → returns immediately; page renders normally.
     """
@@ -53,9 +53,9 @@ def require_login() -> None:
     if not st.user.is_logged_in:
         st.markdown("## CI Sponsor Guide Tool")
         st.markdown(
-            "Sign in with your institutional Google account to continue."
+            "Sign in with your institutional Microsoft account to continue."
         )
-        st.button("Sign in with Google", on_click=st.login, type="primary")
+        st.button("Sign in with Microsoft", on_click=st.login, type="primary")
         st.stop()
 
     allowed = _allowed_emails()
