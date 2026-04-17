@@ -66,17 +66,20 @@ streamlit run app/main.py
 
 By default, authentication is **off** — the app runs without any login check when there is no `[auth]` section in Streamlit secrets. This is the right behaviour for local development and CLI usage.
 
-When you deploy to Streamlit Cloud and want to restrict access to a named list of institutional email addresses, follow these steps.
+When you deploy to Streamlit Cloud and want to restrict access to a named list of institutional email addresses, follow these steps. The app uses **Microsoft Azure AD** as the sign-in provider, which works with any institution that uses Microsoft 365 / Outlook / Teams for email.
 
-### 1. Create Google OAuth credentials
+### 1. Register an app in Azure Active Directory
 
-1. Open [Google Cloud Console](https://console.cloud.google.com) and select (or create) a project.
-2. Go to **APIs & Services > Credentials**.
-3. Click **Create credentials > OAuth 2.0 Client ID** and choose **Web application**.
-4. Under **Authorized redirect URIs**, add:
+1. Go to [portal.azure.com](https://portal.azure.com) and sign in with an admin account (or ask your IT team to do this step).
+2. Navigate to **Azure Active Directory > App registrations > New registration**.
+3. Give it a name (e.g. `CI Sponsor Guide Tool`).
+4. Under **Supported account types**, choose:
+   - *Accounts in this organizational directory only* — recommended; restricts sign-in to your institution only.
+5. Under **Redirect URI**, choose **Web** and add both:
    - Local dev: `http://localhost:8501/oauth2callback`
    - Production: `https://<your-app>.streamlit.app/oauth2callback`
-5. Copy the **Client ID** and **Client Secret**.
+6. Click **Register**. Copy the **Application (client) ID** and the **Directory (tenant) ID** shown on the overview page.
+7. Go to **Certificates & secrets > New client secret**, set an expiry, and copy the secret **Value** (not the ID).
 
 ### 2. Configure secrets
 
@@ -90,11 +93,11 @@ Edit `.streamlit/secrets.toml`:
 
 ```toml
 [auth]
-redirect_uri   = "http://localhost:8501/oauth2callback"
-cookie_secret  = "a-long-random-string"   # python3 -c "import secrets; print(secrets.token_hex(32))"
-client_id      = "YOUR_CLIENT_ID.apps.googleusercontent.com"
-client_secret  = "YOUR_CLIENT_SECRET"
-server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
+redirect_uri        = "http://localhost:8501/oauth2callback"
+cookie_secret       = "a-long-random-string"   # python3 -c "import secrets; print(secrets.token_hex(32))"
+client_id           = "YOUR_AZURE_APPLICATION_CLIENT_ID"
+client_secret       = "YOUR_AZURE_CLIENT_SECRET_VALUE"
+server_metadata_url = "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0/.well-known/openid-configuration"
 
 [allowed_users]
 emails = [
@@ -107,19 +110,27 @@ emails = [
 
 ### 3. On Streamlit Cloud
 
-Paste the same key/value pairs into **App settings > Secrets** in the Streamlit Cloud dashboard. Update `redirect_uri` to your production URL first.
+Paste the same key/value pairs into **App settings > Secrets** in the Streamlit Cloud dashboard. Change `redirect_uri` to your production URL:
+
+```toml
+redirect_uri = "https://<your-app>.streamlit.app/oauth2callback"
+```
 
 ### Behaviour at runtime
 
 | Situation | What the user sees |
 | --- | --- |
 | No `[auth]` in secrets | App loads normally, no login required (dev mode) |
-| `[auth]` present, not signed in | Sign-in page with Google button |
+| `[auth]` present, not signed in | Sign-in page with Microsoft button |
 | Signed in, email on allowlist | App loads normally |
 | Signed in, email NOT on allowlist | Access-denied message with sign-out button |
-| `[allowed_users]` section absent | Any authenticated Google account is allowed |
+| `[allowed_users]` section absent | Any authenticated account in your Azure AD tenant is allowed |
 
 Users see a **Sign out** button at the bottom of the sidebar when they are signed in.
+
+### Note on client secret expiry
+
+Azure client secrets expire (1 or 2 years is typical). Set a calendar reminder to rotate the secret before it expires — an expired secret will break sign-in for all users. Rotate by creating a new secret in Azure, updating `client_secret` in Streamlit Cloud Secrets, and deleting the old secret.
 
 ## Streamlit App
 
