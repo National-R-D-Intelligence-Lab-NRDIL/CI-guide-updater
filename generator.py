@@ -7,15 +7,12 @@ first-draft Sponsor Guide in markdown.
 import logging
 import os
 import re
-
-from openai import OpenAI
+from typing import Optional
 
 import scraper
-from src.utils.secrets import get_secret
+from src.utils.llm_client import get_default_model, get_llm_client
 from src.utils.source_policy import assert_public_sources
 
-GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_MAX_INPUT_CHARS = 200_000
 MAX_INPUT_CHARS = int(
     os.getenv("LLM_MAX_INPUT_CHARS", str(DEFAULT_MAX_INPUT_CHARS))
@@ -113,7 +110,7 @@ def find_missing_required_sections(markdown: str) -> list[str]:
 def generate_guide(
     sources: list[dict],
     program: str,
-    model_name: str = DEFAULT_MODEL,
+    model_name: Optional[str] = None,
 ) -> str:
     """Scrape sources and generate a first-draft Sponsor Guide.
 
@@ -125,9 +122,9 @@ def generate_guide(
     Returns:
         Markdown string of the generated guide.
     """
-    api_key = get_secret("GEMINI_API_KEY")
-    if not api_key:
-        raise EnvironmentError("GEMINI_API_KEY is not set.")
+    client = get_llm_client()
+    if model_name is None:
+        model_name = get_default_model()
     assert_public_sources(sources, context="guide generation")
 
     source_texts: list[str] = []
@@ -156,8 +153,6 @@ def generate_guide(
         f'Create a Sponsor Guide for the "{program}" grant program.\n\n'
         f"Below are the scraped source pages:\n\n{combined}"
     )
-
-    client = OpenAI(api_key=api_key, base_url=GEMINI_BASE_URL)
 
     logger.info("event=guide_generation_start model=%s", model_name)
     response = client.chat.completions.create(

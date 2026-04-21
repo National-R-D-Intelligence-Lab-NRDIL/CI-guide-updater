@@ -9,12 +9,10 @@ enforcing guardrails:
 
 import json
 import re
+from typing import Optional
 from urllib.parse import quote
 
-from openai import OpenAI
-
-import updater
-from src.utils.secrets import get_secret
+from src.utils.llm_client import get_default_model, get_llm_client
 from src.utils.source_policy import assert_public_sources
 
 
@@ -135,7 +133,7 @@ def add_citations(
     guide_md: str,
     sources: list[dict],
     snapshots_by_name: dict[str, str],
-    model_name: str = updater.DEFAULT_MODEL,
+    model_name: Optional[str] = None,
     min_overlap: float = 0.06,
 ) -> tuple[str, list[dict]]:
     """Insert markdown footnote citations with safety guardrails.
@@ -152,9 +150,12 @@ def add_citations(
             - cited markdown
             - evidence list suitable for JSON audit export
     """
-    api_key = get_secret("GEMINI_API_KEY")
-    if not api_key:
+    try:
+        client = get_llm_client()
+    except EnvironmentError:
         return guide_md, []
+    if model_name is None:
+        model_name = get_default_model()
 
     assert_public_sources(sources, context="citation generation")
 
@@ -174,7 +175,6 @@ def add_citations(
     source_excerpts = {name: snapshots_by_name.get(name, "") for name in source_names}
 
     prompt = _build_prompt(claims, source_names, source_excerpts)
-    client = OpenAI(api_key=api_key, base_url=updater.GEMINI_BASE_URL)
     response = client.chat.completions.create(
         model=model_name,
         messages=[

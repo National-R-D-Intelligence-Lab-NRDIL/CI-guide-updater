@@ -27,7 +27,6 @@ import review_async
 from src.utils.logging_utils import configure_rotating_file_logging
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
-load_dotenv(_PROJECT_ROOT / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +152,7 @@ def run_bootstrap(
 
 
 def main() -> None:
+    load_dotenv(_PROJECT_ROOT / ".env")
     configure_rotating_file_logging(log_file=Path("logs") / "bootstrap.log")
     parser = argparse.ArgumentParser(
         description="Bootstrap a new grant program: discover sources, "

@@ -47,6 +47,7 @@ import cite
 import differ
 import scraper
 import updater
+from src.utils.llm_client import get_default_model
 from src.utils.logging_utils import configure_rotating_file_logging
 from src.utils.source_policy import assert_public_sources
 
@@ -413,7 +414,7 @@ def run_pipeline(
     sources_config: str,
     guide_path: str,
     output_dir: str = "output",
-    model_name: str = updater.DEFAULT_MODEL,
+    model_name: Optional[str] = None,
     state_file: Optional[str] = None,
     data_dir: Optional[str] = None,
     with_citations: bool = True,
@@ -432,6 +433,9 @@ def run_pipeline(
     Returns:
         ``True`` if the guide was updated, ``False`` if no changes were found.
     """
+    if model_name is None:
+        model_name = get_default_model()
+
     # -- 1. Load inputs -------------------------------------------------------
     sources_root = os.path.dirname(os.path.abspath(sources_config)) or "."
     if state_file is None:
@@ -638,8 +642,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default=updater.DEFAULT_MODEL,
-        help=f"LLM model name (default: {updater.DEFAULT_MODEL})",
+        default=get_default_model(),
+        help=f"LLM model name (default: {get_default_model()})",
     )
     parser.add_argument(
         "--with-citations",

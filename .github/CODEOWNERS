@@ -1,0 +1,2 @@
+# Security-sensitive allowlist changes require explicit review.
+/config/trusted_domains.json @security-team

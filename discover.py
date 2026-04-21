@@ -3,6 +3,7 @@
 Uses Gemini with Google Search grounding to find authoritative web pages
 for a given grant program, then validates and classifies each URL.
 """
+# Intentionally bypasses llm_client: this module uses Gemini-specific Google Search grounding.
 
 import json
 import logging

@@ -10,16 +10,12 @@ Configured for Google Gemini via its OpenAI-compatible endpoint.  Set
 
 import logging
 import os
-from pathlib import Path
+from typing import Optional
 
-from openai import APIConnectionError, APIStatusError, OpenAI
+from openai import APIConnectionError, APIStatusError
 
-from src.utils.secrets import get_secret
+from src.utils.llm_client import get_default_model, get_llm_client
 
-_PROJECT_ROOT = Path(__file__).resolve().parent
-
-GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_MAX_INPUT_CHARS = 200_000
 MAX_INPUT_CHARS = int(
     os.getenv("LLM_MAX_INPUT_CHARS", str(DEFAULT_MAX_INPUT_CHARS))
@@ -94,7 +90,7 @@ def _build_user_prompt(current_guide_md: str, diff_text: str) -> str:
 def update_guide(
     current_guide_md: str,
     diff_text: str,
-    model_name: str = DEFAULT_MODEL,
+    model_name: Optional[str] = None,
 ) -> str:
     """Send the guide and diff to an LLM and return the rewritten guide.
 
@@ -113,17 +109,9 @@ def update_guide(
         openai.APIConnectionError: On network-level failures.
         openai.APIStatusError: On non-2xx API responses (rate limits, auth, etc.).
     """
-    api_key = get_secret("GEMINI_API_KEY")
-    if not api_key:
-        raise EnvironmentError(
-            "GEMINI_API_KEY is not set. Add it to .env in the project root "
-            f"({_PROJECT_ROOT / '.env'}) as GEMINI_API_KEY=... or export it in your shell."
-        )
-
-    client = OpenAI(
-        api_key=api_key,
-        base_url=GEMINI_BASE_URL,
-    )
+    client = get_llm_client()
+    if model_name is None:
+        model_name = get_default_model()
 
     current_guide_md, diff_text = _truncate_guide_and_diff(
         current_guide_md,
@@ -150,7 +138,7 @@ def update_guide(
 def classify_sections(
     page_text: str,
     guide_md: str,
-    model_name: str = DEFAULT_MODEL,
+    model_name: Optional[str] = None,
 ) -> list[str]:
     """Ask the LLM which guide sections a scraped page is relevant to.
 
@@ -174,11 +162,12 @@ def classify_sections(
     heading_list = "\n".join(f"- {h.strip()}" for h in headings)
     snippet = page_text[:3000]
 
-    api_key = get_secret("GEMINI_API_KEY")
-    if not api_key:
+    try:
+        client = get_llm_client()
+    except EnvironmentError:
         return []
-
-    client = OpenAI(api_key=api_key, base_url=GEMINI_BASE_URL)
+    if model_name is None:
+        model_name = get_default_model()
 
     prompt = (
         "Below is a list of section headings from a Sponsor Guide, "

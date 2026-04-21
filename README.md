@@ -26,6 +26,10 @@ Ongoing maintenance
   5. Audit Evidence    → trace citations and diffs back to source pages
 ```
 
+## Architecture
+
+- See [Architecture](docs/ARCHITECTURE.md) for module flow, trust boundaries, and deployment/storage design.
+
 Output files (markdown, Word, PDF) are available immediately after generating the first draft. You do not need to run the weekly update before you can see results.
 
 You do not need to manually map links to guide sections. The tool reads the source content and guide headings, then auto-detects the best section matches.

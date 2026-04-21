@@ -2,31 +2,52 @@
 
 from __future__ import annotations
 
+import functools
+import json
 import ipaddress
 import re
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from typing import Any
 
 
 PUBLIC_DATA_CLASS = "public"
+_TRUSTED_DOMAINS_PATH = Path(__file__).resolve().parents[2] / "config" / "trusted_domains.json"
 
-# Trusted public-source domains beyond the broad .gov/.edu allowlist.
-# Keep this list small and high-confidence; prefer adding roots (not subdomains)
-# so that relevant program pages continue to match.
-_FOUNDATION_DOMAIN_ALLOWLIST: set[str] = {
-    "gatesfoundation.org",
-    "wellcome.org",
-    "moore.org",
-    "sloan.org",
-    "simonsfoundation.org",
-    "hhmi.org",
-    "cancerresearchuk.org",
-    "rockefellerfoundation.org",
-    "fordfoundation.org",
-    "rwjf.org",
-    "helenkellerfoundation.org",
-    "kff.org",
-}
+
+@functools.lru_cache(maxsize=1)
+def _load_foundation_allowlist() -> frozenset[str]:
+    try:
+        raw = _TRUSTED_DOMAINS_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"Trusted domains config is missing: {_TRUSTED_DOMAINS_PATH}") from exc
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid trusted domains config JSON: {exc}") from exc
+
+    domains = payload.get("foundation_domains")
+    if not isinstance(domains, list):
+        raise RuntimeError("Invalid trusted domains config: 'foundation_domains' must be a list")
+
+    validated: set[str] = set()
+    for domain in domains:
+        if not isinstance(domain, str):
+            raise RuntimeError(f"Invalid trusted domain entry: {domain!r}")
+        value = domain.strip()
+        if (
+            not value
+            or value != domain
+            or value != value.lower()
+            or "*" in value
+            or "/" in value
+            or ":" in value
+        ):
+            raise RuntimeError(f"Invalid trusted domain entry: {domain!r}")
+        validated.add(value)
+
+    return frozenset(validated)
 
 
 def _normalize_data_class(value: Any) -> str:
@@ -113,11 +134,15 @@ def _host_is_allowlisted(host: str) -> bool:
     if host.endswith(".gov") or host.endswith(".edu"):
         return True
 
-    for root in _FOUNDATION_DOMAIN_ALLOWLIST:
+    for root in _load_foundation_allowlist():
         if host == root or host.endswith(f".{root}"):
             return True
 
     return False
+
+
+# Load once during import to fail closed if config is missing/invalid.
+_load_foundation_allowlist()
 
 
 def sanitize_program_for_prompt(program: str) -> str:

@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import time
 from datetime import datetime, timezone
@@ -52,6 +53,9 @@ def _release_file_lock(fh: TextIO) -> None:
         fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
+# Retries on ConnectionError and on HTTP 429/503. Backoff is jittered
+# exponential: ~2s, ~4s, ~8s (plus 0–1s jitter), capped by any Retry-After
+# header up to 60s. Final attempt does not sleep.
 def fetch_and_clean_text(url: str) -> str:
     """Fetch a web page and return its visible text with scripts/styles removed.
 
@@ -66,7 +70,7 @@ def fetch_and_clean_text(url: str) -> str:
         requests.ConnectionError: If all retry attempts fail due to connectivity issues.
     """
     safe_url = normalize_and_validate_public_url(url, context="scraper")
-    attempts = 3
+    attempts = 4
     response: requests.Response | None = None
     last_connection_error: requests.ConnectionError | None = None
 
@@ -74,7 +78,16 @@ def fetch_and_clean_text(url: str) -> str:
         try:
             response = requests.get(safe_url, timeout=30)
             if response.status_code in {429, 503} and attempt < attempts - 1:
-                time.sleep(2**attempt)
+                base = 2 ** (attempt + 1)
+                sleep_s = base + random.uniform(0, 1)
+                retry_after = response.headers.get("Retry-After")
+                if retry_after is not None:
+                    try:
+                        retry_after_s = float(retry_after)
+                        sleep_s = min(60.0, max(sleep_s, retry_after_s))
+                    except ValueError:
+                        pass
+                time.sleep(sleep_s)
                 continue
             response.raise_for_status()
             break
@@ -82,7 +95,9 @@ def fetch_and_clean_text(url: str) -> str:
             last_connection_error = exc
             if attempt >= attempts - 1:
                 raise
-            time.sleep(2**attempt)
+            base = 2 ** (attempt + 1)
+            sleep_s = base + random.uniform(0, 1)
+            time.sleep(sleep_s)
 
     if response is None:
         if last_connection_error is not None:

@@ -46,12 +46,12 @@ class CiteGuardrailTests(unittest.TestCase):
         self.assertTrue(deep_link.startswith(f"{base_url}#:~:text="))
 
     @patch("cite.assert_public_sources")
-    @patch("cite.get_secret", return_value="test-api-key")
-    @patch("cite.OpenAI")
+    @patch("cite.get_default_model", return_value="gemini-2.5-flash")
+    @patch("cite.get_llm_client")
     def test_add_citations_rejects_source_when_overlap_is_below_six_percent(
         self,
-        mock_openai,
-        _mock_get_secret,
+        mock_get_client,
+        _mock_get_default_model,
         _mock_assert_public_sources,
     ) -> None:
         # 17 claim tokens -> 1 overlap token yields 1/17 = 0.0588 (< 0.06), must fail.
@@ -64,7 +64,7 @@ class CiteGuardrailTests(unittest.TestCase):
         snapshots = {"Source One": "shared uniqueword"}
         llm_payload = '[{"id":"L2","sources":["Source One"]}]'
 
-        mock_openai.return_value = _MockClient(llm_payload)
+        mock_get_client.return_value = _MockClient(llm_payload)
 
         cited_md, evidence = cite.add_citations(guide_md, sources, snapshots, min_overlap=0.06)
 
@@ -72,12 +72,12 @@ class CiteGuardrailTests(unittest.TestCase):
         self.assertEqual(evidence, [])
 
     @patch("cite.assert_public_sources")
-    @patch("cite.get_secret", return_value="test-api-key")
-    @patch("cite.OpenAI")
+    @patch("cite.get_default_model", return_value="gemini-2.5-flash")
+    @patch("cite.get_llm_client")
     def test_add_citations_accepts_source_when_overlap_meets_six_percent(
         self,
-        mock_openai,
-        _mock_get_secret,
+        mock_get_client,
+        _mock_get_default_model,
         _mock_assert_public_sources,
     ) -> None:
         # 16 claim tokens -> 1 overlap token yields 1/16 = 0.0625 (>= 0.06), must pass.
@@ -90,7 +90,7 @@ class CiteGuardrailTests(unittest.TestCase):
         snapshots = {"Source One": "shared uniqueword"}
         llm_payload = '[{"id":"L2","sources":["Source One"]}]'
 
-        mock_openai.return_value = _MockClient(llm_payload)
+        mock_get_client.return_value = _MockClient(llm_payload)
 
         cited_md, evidence = cite.add_citations(guide_md, sources, snapshots, min_overlap=0.06)
 
