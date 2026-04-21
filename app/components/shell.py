@@ -7,7 +7,6 @@ from typing import Iterable
 
 import streamlit as st
 
-from app.auth import require_login
 from src.services.review_service import get_program_display_name
 
 
@@ -46,8 +45,7 @@ WORKFLOW_STEPS = [
 
 
 def apply_app_chrome() -> None:
-    """Apply shared styling and enforce the auth gate for every page."""
-    require_login()
+    """Apply shared styling for a calmer, task-first interface."""
     st.markdown(
         """
         <style>
@@ -185,10 +183,6 @@ def render_sidebar(current_path: str) -> None:
         st.caption("Keeping a guide current? Use Weekly Update when sponsor pages change.")
         st.caption("Need proof? Use Audit Evidence to trace citations back to sources.")
 
-        if st.user.is_logged_in:
-            st.markdown("---")
-            st.caption(f"Signed in as {st.user.email}")
-            st.button("Sign out", on_click=st.logout, key="sidebar_logout", use_container_width=True)
 
 
 def render_page_header(title: str, summary: str, step_label: str = "") -> None:
