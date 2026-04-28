@@ -13,6 +13,7 @@ import re
 import time
 from datetime import datetime, timezone
 from importlib import import_module
+from pathlib import Path
 from typing import TextIO
 
 import requests
@@ -297,6 +298,38 @@ def fetch_source_payload(url: str) -> dict:
     }
 
 
+def _resolve_local_source_path(file_path: str) -> Path:
+    """Resolve and validate a local source path."""
+    raw = str(file_path or "").strip()
+    if not raw:
+        raise ValueError("Local source path is required.")
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    resolved = candidate.resolve()
+    if not resolved.exists():
+        raise FileNotFoundError(f"Local source file not found: {resolved}")
+    if resolved.suffix.lower() != ".pdf":
+        raise ValueError("Only PDF uploads are currently supported as local sources.")
+    return resolved
+
+
+def fetch_source_payload_from_source(source: dict) -> dict:
+    """Fetch source payload from either URL-based or local-file-based source dict."""
+    local_path = str(source.get("file_path", "")).strip() if isinstance(source, dict) else ""
+    if local_path:
+        path = _resolve_local_source_path(local_path)
+        pdf_bytes = path.read_bytes()
+        payload = _extract_pdf_payload(pdf_bytes, str(path))
+        payload["metadata"]["file_path"] = str(path)
+        return payload
+
+    url = str(source.get("url", "")).strip() if isinstance(source, dict) else ""
+    if not url:
+        raise ValueError("Source must include either 'url' or 'file_path'.")
+    return fetch_source_payload(url)
+
+
 # Retries on ConnectionError and on HTTP 429/503. Backoff is jittered
 # exponential: ~2s, ~4s, ~8s (plus 0–1s jitter), capped by any Retry-After
 # header up to 60s. Final attempt does not sleep.
@@ -317,6 +350,57 @@ def fetch_and_clean_text(url: str) -> str:
         requests.ConnectionError: If all retry attempts fail due to connectivity issues.
     """
     return fetch_source_payload(url)["text"]
+
+
+def check_for_updates_from_source(
+    source: dict,
+    name: str,
+    state_file: str = STATE_FILE,
+    data_dir: str = DATA_DIR,
+) -> bool:
+    """Scrape one source dict, compare hash, and persist snapshots and metadata."""
+    payload = fetch_source_payload_from_source(source)
+    text = payload["text"]
+    metadata = payload.get("metadata", {})
+    new_hash = generate_hash(text)
+    now = datetime.now(timezone.utc).isoformat()
+
+    state = _load_state(state_file)
+    entry = state.get(name)
+
+    if entry and entry.get("hash") == new_hash:
+        logger.info("source=%s status=no_change checked_at=%s", name, now)
+        state[name]["last_checked"] = now
+        state[name]["extraction"] = metadata
+        _save_state(state, state_file)
+        return False
+
+    os.makedirs(data_dir, exist_ok=True)
+    safe_name = re.sub(r"[^A-Za-z0-9_-]", "_", name)
+    data_path = os.path.join(data_dir, f"{safe_name}_latest.txt")
+    with open(data_path, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    metadata_path = os.path.join(data_dir, f"{safe_name}_latest.meta.json")
+    with open(metadata_path, "w", encoding="utf-8") as meta_fh:
+        json.dump(metadata, meta_fh, indent=2)
+
+    label = "updated" if entry else "new entry"
+    state[name] = {
+        "url": source.get("url", ""),
+        "file_path": source.get("file_path", ""),
+        "hash": new_hash,
+        "last_checked": now,
+        "extraction": metadata,
+    }
+    _save_state(state, state_file)
+    logger.info(
+        "source=%s status=%s checked_at=%s snapshot_path=%s",
+        name,
+        label.replace(" ", "_"),
+        now,
+        data_path,
+    )
+    return True
 
 
 def generate_hash(text: str) -> str:
@@ -394,46 +478,12 @@ def check_for_updates(
     Returns:
         ``True`` if the content changed (or is new), ``False`` otherwise.
     """
-    payload = fetch_source_payload(url)
-    text = payload["text"]
-    metadata = payload.get("metadata", {})
-    new_hash = generate_hash(text)
-    now = datetime.now(timezone.utc).isoformat()
-
-    state = _load_state(state_file)
-    entry = state.get(name)
-
-    if entry and entry.get("hash") == new_hash:
-        logger.info("source=%s status=no_change checked_at=%s", name, now)
-        state[name]["last_checked"] = now
-        _save_state(state, state_file)
-        return False
-
-    os.makedirs(data_dir, exist_ok=True)
-    safe_name = re.sub(r"[^A-Za-z0-9_-]", "_", name)
-    data_path = os.path.join(data_dir, f"{safe_name}_latest.txt")
-    with open(data_path, "w", encoding="utf-8") as fh:
-        fh.write(text)
-    metadata_path = os.path.join(data_dir, f"{safe_name}_latest.meta.json")
-    with open(metadata_path, "w", encoding="utf-8") as meta_fh:
-        json.dump(metadata, meta_fh, indent=2)
-
-    label = "updated" if entry else "new entry"
-    state[name] = {
-        "url": url,
-        "hash": new_hash,
-        "last_checked": now,
-        "extraction": metadata,
-    }
-    _save_state(state, state_file)
-    logger.info(
-        "source=%s status=%s checked_at=%s snapshot_path=%s",
+    return check_for_updates_from_source(
+        {"url": url},
         name,
-        label.replace(" ", "_"),
-        now,
-        data_path,
+        state_file=state_file,
+        data_dir=data_dir,
     )
-    return True
 
 
 if __name__ == "__main__":

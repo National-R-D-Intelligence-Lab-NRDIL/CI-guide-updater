@@ -383,6 +383,14 @@ OCR_API_KEY=
 
 If OCR is configured, it is used only when local PDF extraction cannot produce usable text.
 
+In **Review & Generate**, users can now add either:
+
+- a URL source, or
+- an uploaded PDF file source
+
+Uploaded PDFs are saved under `programs/<slug>/review/uploads/` and can be approved like any other source.  
+Only sources marked `public` are finalized into `sources.json` and used for first-draft generation.
+
 The tool now stores basic extraction metadata to help review quality and debug source behavior:
 
 - extraction method used (`html`, `pypdf`, `pymupdf`, `ocr`)

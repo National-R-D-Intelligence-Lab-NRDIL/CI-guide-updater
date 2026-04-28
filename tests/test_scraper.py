@@ -133,6 +133,29 @@ class ScraperTests(unittest.TestCase):
         self.assertEqual(payload["metadata"]["page_count"], 3)
         self.assertEqual(payload["metadata"]["character_count"], len("fallback text"))
 
+    @patch(
+        "scraper._extract_pdf_payload",
+        return_value={
+            "text": "uploaded pdf text",
+            "metadata": {
+                "extraction_method": "pypdf",
+                "character_count": 17,
+                "page_count": 1,
+                "content_type": "application/pdf",
+            },
+        },
+    )
+    def test_fetch_source_payload_from_source_supports_local_pdf_file(self, _mock_extract_payload) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = Path(tmp_dir) / "uploaded.pdf"
+            file_path.write_bytes(b"%PDF-1.7 fake bytes")
+
+            payload = scraper.fetch_source_payload_from_source({"file_path": str(file_path)})
+
+            self.assertEqual(payload["text"], "uploaded pdf text")
+            self.assertEqual(payload["metadata"]["file_path"], str(file_path.resolve()))
+            self.assertEqual(payload["metadata"]["extraction_method"], "pypdf")
+
     @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
     @patch("scraper.requests.get")
     def test_fetch_and_clean_text_fallback_for_unscrapable_page(

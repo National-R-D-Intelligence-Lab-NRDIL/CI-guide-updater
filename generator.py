@@ -136,13 +136,19 @@ def generate_guide(
         model_name = get_default_model()
     assert_public_sources(sources, context="guide generation")
 
-    scraped_sources: list[tuple[str, str, str]] = []
+    scraped_sources: list[tuple[str, str, str, str]] = []
     for src in sources:
-        name, url = src["name"], src["url"]
-        logger.info("event=scrape_start source=%s url=%s", name, url)
+        name = str(src.get("name", "")).strip()
+        url = str(src.get("url", "")).strip()
+        file_path = str(src.get("file_path", "")).strip()
+        source_ref = url or file_path
+        logger.info("event=scrape_start source=%s ref=%s", name, source_ref)
         try:
-            text = scraper.fetch_and_clean_text(url)
-            scraped_sources.append((name, url, text))
+            payload = scraper.fetch_source_payload_from_source(src)
+            text = payload.get("text", "")
+            metadata = payload.get("metadata", {})
+            source_method = str(metadata.get("extraction_method", "")).strip().lower()
+            scraped_sources.append((name, source_ref, text, source_method))
         except Exception as exc:
             logger.warning("event=scrape_failed source=%s error=%s", name, exc)
 
@@ -151,8 +157,12 @@ def generate_guide(
 
     per_source_budget = _source_input_budget(len(scraped_sources))
     source_texts: list[str] = []
-    for name, url, text in scraped_sources:
-        source_type = "PDF document" if url.lower().split("?", 1)[0].endswith(".pdf") else "Web page"
+    for name, source_ref, text, source_method in scraped_sources:
+        source_type = (
+            "PDF document"
+            if source_method in {"pypdf", "pymupdf", "ocr"} or source_ref.lower().endswith(".pdf")
+            else "Web page"
+        )
         trimmed = _truncate_for_llm(text, per_source_budget, f"source {name}")
         enforce_sensitive_data_policy(
             trimmed,
@@ -160,7 +170,7 @@ def generate_guide(
         )
         source_texts.append(
             f"### Source: {name}\n"
-            f"URL: {url}\n"
+            f"Reference: {source_ref}\n"
             f"Source type: {source_type}\n\n"
             f"{trimmed}"
         )

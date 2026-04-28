@@ -90,8 +90,11 @@ def _best_excerpt_and_link(claim: str, source_text: str, base_url: str) -> tuple
         return "", base_url
 
     # Best-effort browser text fragment deep link.
-    frag = quote(excerpt[:120], safe="")
-    deep_link = f"{base_url}#:~:text={frag}"
+    if base_url.startswith("http://") or base_url.startswith("https://"):
+        frag = quote(excerpt[:120], safe="")
+        deep_link = f"{base_url}#:~:text={frag}"
+    else:
+        deep_link = base_url
     return excerpt, deep_link
 
 
@@ -217,11 +220,16 @@ def add_citations(
 
     assert_public_sources(sources, context="citation generation")
 
-    source_url_map = {
-        s["name"]: s["url"]
-        for s in sources
-        if isinstance(s, dict) and s.get("name") and s.get("url")
-    }
+    source_url_map = {}
+    for s in sources:
+        if not isinstance(s, dict):
+            continue
+        name = str(s.get("name", "")).strip()
+        if not name:
+            continue
+        ref = str(s.get("url", "")).strip() or str(s.get("file_path", "")).strip()
+        if ref:
+            source_url_map[name] = ref
     source_metadata_by_name = source_metadata_by_name or {}
     if not source_url_map:
         return guide_md, []

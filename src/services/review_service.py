@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from io import BytesIO
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -134,7 +135,9 @@ def _utc_now() -> str:
 _SOURCE_BASE_FIELDS = {
     "name",
     "url",
+    "file_path",
     "sections",
+    "data_class",
     "title",
     "status",
     "notes",
@@ -283,6 +286,92 @@ def add_manual_source(
         return {"ok": False, "error": "Failed to add manual source.", "detail": format_exception(exc)}
 
 
+def add_manual_pdf_source(
+    slug: str,
+    file_name: str,
+    file_bytes: bytes,
+    title: str = "",
+    mapped_section: str = "",
+    reviewer_note: str = "",
+    data_class: str = "public",
+) -> dict[str, Any]:
+    """Persist an uploaded PDF source in a review sidecar JSON file."""
+    try:
+        hydrate_program(slug)
+        clean_data_class = str(data_class).strip().lower()
+        if clean_data_class not in {"public", "internal"}:
+            raise UserFacingError("Invalid data class.", "Choose public or internal.")
+
+        clean_name = str(file_name or "").strip()
+        if not clean_name:
+            raise UserFacingError("A PDF filename is required.")
+        if not clean_name.lower().endswith(".pdf"):
+            raise UserFacingError("Only PDF files are supported for upload.")
+        if not file_bytes:
+            raise UserFacingError("Uploaded file is empty.")
+
+        # Quick parse check so broken uploads are rejected immediately.
+        try:
+            pdf_module = __import__("pypdf")
+            PdfReader = pdf_module.PdfReader
+            PdfReader(BytesIO(file_bytes))
+        except Exception as exc:
+            raise UserFacingError("Uploaded file is not a readable PDF.", str(exc)) from exc
+
+        review_dir = _review_dir(slug)
+        review_dir.mkdir(parents=True, exist_ok=True)
+        uploads_dir = review_dir / "uploads"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_file_name = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in clean_name)
+        target_path = uploads_dir / safe_file_name
+        suffix = 2
+        while target_path.exists():
+            stem = Path(safe_file_name).stem or "source"
+            ext = Path(safe_file_name).suffix or ".pdf"
+            target_path = uploads_dir / f"{stem}_{suffix}{ext}"
+            suffix += 1
+        target_path.write_bytes(file_bytes)
+
+        manual_path = _manual_sources_path(slug)
+        manual_sources: list[dict[str, Any]] = []
+        if manual_path.exists():
+            manual_sources = json.loads(manual_path.read_text(encoding="utf-8"))
+
+        name_seed = title.strip() or target_path.name
+        name = _make_manual_name(slug, name_seed, str(target_path))
+        existing_names = {entry.get("name", "") for entry in manual_sources}
+        name_suffix = 2
+        base_name = name
+        while name in existing_names:
+            name = f"{base_name}_{name_suffix}"
+            name_suffix += 1
+
+        sections = [mapped_section.strip()] if mapped_section.strip() else []
+        review_status = "approved" if clean_data_class == "public" else "pending_manual_review"
+        entry = {
+            "name": name,
+            "url": "",
+            "file_path": str(target_path),
+            "title": title.strip() or target_path.name,
+            "sections": sections,
+            "data_class": clean_data_class,
+            "mapped_section": mapped_section.strip(),
+            "note": reviewer_note.strip(),
+            "source_origin": "manual_upload",
+            "created_at": _utc_now(),
+            "review_status": review_status,
+        }
+        manual_sources.append(entry)
+        manual_path.write_text(json.dumps(manual_sources, indent=2), encoding="utf-8")
+        storage = persist_paths(slug, ["review/manual_sources.json", f"review/uploads/{target_path.name}"])
+        return {"ok": True, "entry": entry, "path": str(manual_path), "storage": storage}
+    except UserFacingError as exc:
+        return {"ok": False, "error": exc.message, "detail": exc.detail}
+    except Exception as exc:  # pragma: no cover
+        return {"ok": False, "error": "Failed to add PDF source.", "detail": format_exception(exc)}
+
+
 def load_review_context(slug: str) -> dict[str, Any]:
     """Load candidate sources plus any saved review decisions for a program."""
     try:
@@ -315,6 +404,7 @@ def load_review_context(slug: str) -> dict[str, Any]:
                 {
                     "name": name,
                     "url": src.get("url", ""),
+                    "file_path": src.get("file_path", ""),
                     "sections": src.get("sections", []),
                     "data_class": src.get("data_class", "public"),
                     "status": decision.get("status", "unreviewed"),
@@ -334,6 +424,7 @@ def load_review_context(slug: str) -> dict[str, Any]:
                 {
                     "name": name,
                     "url": src.get("url", ""),
+                    "file_path": src.get("file_path", ""),
                     "sections": src.get("sections", []),
                     "data_class": src.get("data_class", "public"),
                     "status": decision.get("status", src.get("review_status", "approved")),
@@ -401,8 +492,10 @@ def finalize_review(slug: str, include_unreviewed: bool = False) -> dict[str, An
                     {
                         "name": row["name"],
                         "url": row["url"],
+                        "file_path": row.get("file_path", ""),
                         "sections": row["sections"],
                         **(row.get("metadata") or {}),
+                        "data_class": "public",
                     }
                 )
 
@@ -465,7 +558,7 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
             source_metadata_map: dict[str, dict] = {}
             for src in sources:
                 try:
-                    payload = scraper.fetch_source_payload(src["url"])
+                    payload = scraper.fetch_source_payload_from_source(src)
                     snapshot_map[src["name"]] = payload.get("text", "")
                     meta = payload.get("metadata", {})
                     source_metadata_map[src["name"]] = meta if isinstance(meta, dict) else {}

@@ -23,6 +23,7 @@ from app.components.status import render_storage_status
 from app.components.tables import show_table
 from app.state.session import init_session_state
 from src.services.review_service import (
+    add_manual_pdf_source,
     add_manual_source,
     draft_exists,
     finalize_review,
@@ -243,7 +244,10 @@ if rows:
                     st.write(f"**Data class:** {selected_row['data_class']}")
                 if selected_row.get("title"):
                     st.write(f"**Title:** {selected_row['title']}")
-                st.write(f"**URL:** {selected_row['url']}")
+                if selected_row.get("url"):
+                    st.write(f"**URL:** {selected_row['url']}")
+                if selected_row.get("file_path"):
+                    st.write(f"**Uploaded file:** `{selected_row['file_path']}`")
                 st.write(f"**Sections:** {selected_row['sections_text'] or '(none)'}")
                 if selected_row.get("funder_name"):
                     st.write(f"**Funder:** {selected_row['funder_name']}")
@@ -352,6 +356,60 @@ if add_manual_clicked:
         st.error(added["error"])
         if added.get("detail"):
             st.caption(added["detail"])
+
+with st.form("add_manual_pdf_source_form", clear_on_submit=True):
+    st.markdown("#### Upload a PDF source")
+    manual_pdf = st.file_uploader(
+        "PDF file",
+        type=["pdf"],
+        accept_multiple_files=False,
+        help="Uploaded PDF sources can be reviewed and included in the first draft when marked public.",
+    )
+    manual_pdf_title = st.text_input(
+        "Label/Title (optional)",
+        placeholder="Funding Opportunity Announcement PDF",
+    )
+    manual_pdf_data_class = st.selectbox(
+        "Data class for PDF",
+        options=["public", "internal"],
+        index=0,
+        help="Public sources can be sent to the LLM. Internal sources are tracked but blocked from finalization.",
+    )
+    manual_pdf_section = st.text_input(
+        "Mapped section (optional)",
+        placeholder="e.g. Application Requirements",
+    )
+    manual_pdf_note = st.text_area(
+        "Reviewer note / reason (optional)",
+        placeholder="Why this PDF should be included.",
+    )
+    add_manual_pdf_clicked = st.form_submit_button("Upload PDF Source")
+
+if add_manual_pdf_clicked:
+    if manual_pdf is None:
+        st.error("Please choose a PDF file to upload.")
+    else:
+        added_pdf = add_manual_pdf_source(
+            slug=selected_slug,
+            file_name=manual_pdf.name,
+            file_bytes=manual_pdf.getvalue(),
+            title=manual_pdf_title,
+            mapped_section=manual_pdf_section,
+            reviewer_note=manual_pdf_note,
+            data_class=manual_pdf_data_class,
+        )
+        if added_pdf["ok"]:
+            st.session_state["manual_source_feedback"] = "PDF source uploaded for review."
+            storage = added_pdf.get("storage")
+            if storage:
+                storage_message = str(storage.get("message", "")).strip()
+                if storage_message:
+                    st.session_state["manual_source_feedback"] += f" {storage_message}"
+            st.rerun()
+        else:
+            st.error(added_pdf["error"])
+            if added_pdf.get("detail"):
+                st.caption(added_pdf["detail"])
 
 st.divider()
 st.markdown("### Finalize the approved source list")

@@ -80,8 +80,8 @@ def load_sources(config_path: str) -> list[dict]:
         config_path: Path to the JSON file.
 
     Returns:
-        List of validated source dicts with ``name``, ``url``, ``sections``,
-        and ``data_class``.
+        List of validated source dicts with ``name``, ``sections``,
+        ``data_class``, and either ``url`` or ``file_path``.
     """
     with open(config_path, "r", encoding="utf-8") as fh:
         sources = json.load(fh)
@@ -95,8 +95,11 @@ def load_sources(config_path: str) -> list[dict]:
 
         name = str(src.get("name", "")).strip()
         url = str(src.get("url", "")).strip()
-        if not name or not url:
-            raise ValueError(f"Source at index {idx} must include non-empty 'name' and 'url'")
+        file_path = str(src.get("file_path", "")).strip()
+        if not name or (not url and not file_path):
+            raise ValueError(
+                f"Source at index {idx} must include non-empty 'name' and either 'url' or 'file_path'"
+            )
 
         sections = src.get("sections", [])
         if sections is None:
@@ -112,6 +115,7 @@ def load_sources(config_path: str) -> list[dict]:
 
         src["name"] = name
         src["url"] = url
+        src["file_path"] = file_path
         src["sections"] = sections
         src["data_class"] = "public"
 
@@ -478,13 +482,13 @@ def run_pipeline(
     else:
         logger.info("step=2 action=scrape_diff status=start")
         for src in sources:
-            name, url = src["name"], src["url"]
+            name = src["name"]
             sections = src.get("sections", [])
             old_text = _read_snapshot(name, data_dir)
 
             try:
-                changed = scraper.check_for_updates(
-                    url,
+                changed = scraper.check_for_updates_from_source(
+                    src,
                     name,
                     state_file=state_file,
                     data_dir=data_dir,
@@ -561,7 +565,7 @@ def run_pipeline(
             source_metadata_map[name] = _read_snapshot_metadata(name, data_dir)
             if not txt and not refresh_citations_only:
                 try:
-                    payload = scraper.fetch_source_payload(src["url"])
+                    payload = scraper.fetch_source_payload_from_source(src)
                     txt = payload.get("text", "")
                     meta = payload.get("metadata", {})
                     if isinstance(meta, dict):

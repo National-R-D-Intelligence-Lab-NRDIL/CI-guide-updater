@@ -135,6 +135,34 @@ class CiteGuardrailTests(unittest.TestCase):
             "pymupdf",
         )
 
+    @patch("cite.assert_public_sources")
+    @patch("cite.get_default_model", return_value="gemini-2.5-flash")
+    @patch("cite.get_llm_client")
+    def test_add_citations_supports_local_file_reference(
+        self,
+        mock_get_client,
+        _mock_get_default_model,
+        _mock_assert_public_sources,
+    ) -> None:
+        claim_line = (
+            "alpha bravo charlie delta echo foxtrot golf hotel india juliet "
+            "kilo lima mike november oscar shared"
+        )
+        guide_md = f"# Guide\n\n{claim_line}"
+        sources = [{"name": "Uploaded PDF", "file_path": "programs/demo/review/uploads/nofo.pdf"}]
+        snapshots = {"Uploaded PDF": "shared uniqueword"}
+        llm_payload = '[{"id":"L2","sources":["Uploaded PDF"]}]'
+        mock_get_client.return_value = _MockClient(llm_payload)
+
+        cited_md, evidence = cite.add_citations(guide_md, sources, snapshots, min_overlap=0.06)
+
+        self.assertIn("[[1]](", cited_md)
+        self.assertEqual(len(evidence), 1)
+        self.assertEqual(
+            evidence[0]["source_details"][0]["url"],
+            "programs/demo/review/uploads/nofo.pdf",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
