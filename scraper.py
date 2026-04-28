@@ -12,10 +12,12 @@ import random
 import re
 import time
 from datetime import datetime, timezone
+from importlib import import_module
 from typing import TextIO
 
 import requests
 from bs4 import BeautifulSoup
+from io import BytesIO
 
 from src.utils.source_policy import normalize_and_validate_public_url
 
@@ -26,6 +28,7 @@ else:
 
 STATE_FILE = "state.json"
 DATA_DIR = "data"
+_MAX_FALLBACK_DOC_LINKS = 3
 
 logger = logging.getLogger(__name__)
 
@@ -53,25 +56,9 @@ def _release_file_lock(fh: TextIO) -> None:
         fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
-# Retries on ConnectionError and on HTTP 429/503. Backoff is jittered
-# exponential: ~2s, ~4s, ~8s (plus 0–1s jitter), capped by any Retry-After
-# header up to 60s. Final attempt does not sleep.
-def fetch_and_clean_text(url: str) -> str:
-    """Fetch a web page and return its visible text with scripts/styles removed.
-
-    Args:
-        url: The page URL to scrape.
-
-    Returns:
-        Cleaned, human-readable text extracted from the page.
-
-    Raises:
-        requests.HTTPError: If the server returns a non-retryable non-2xx status code.
-        requests.ConnectionError: If all retry attempts fail due to connectivity issues.
-    """
-    safe_url = normalize_and_validate_public_url(url, context="scraper")
+def _fetch_with_retries(safe_url: str) -> requests.Response:
+    """Fetch URL with retry handling for transient failures."""
     attempts = 4
-    response: requests.Response | None = None
     last_connection_error: requests.ConnectionError | None = None
 
     for attempt in range(attempts):
@@ -90,7 +77,7 @@ def fetch_and_clean_text(url: str) -> str:
                 time.sleep(sleep_s)
                 continue
             response.raise_for_status()
-            break
+            return response
         except requests.ConnectionError as exc:
             last_connection_error = exc
             if attempt >= attempts - 1:
@@ -99,19 +86,134 @@ def fetch_and_clean_text(url: str) -> str:
             sleep_s = base + random.uniform(0, 1)
             time.sleep(sleep_s)
 
-    if response is None:
-        if last_connection_error is not None:
-            raise last_connection_error
-        raise RuntimeError(f"Failed to fetch {safe_url} after {attempts} attempts.")
+    if last_connection_error is not None:
+        raise last_connection_error
+    raise RuntimeError(f"Failed to fetch {safe_url} after {attempts} attempts.")
 
-    soup = BeautifulSoup(response.text, "html.parser")
 
+def _clean_html_text(html: str) -> str:
+    """Extract visible text from HTML while removing noisy tags."""
+    soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
 
     text = soup.get_text(separator="\n")
     lines = (line.strip() for line in text.splitlines())
     return "\n".join(line for line in lines if line)
+
+
+def _extract_pdf_text(pdf_bytes: bytes) -> str:
+    """Extract text content from a PDF byte stream."""
+    try:
+        pdf_module = import_module("pypdf")
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "PDF support requires the optional dependency 'pypdf'. "
+            "Install it with: pip install 'pypdf>=4,<6'"
+        ) from exc
+
+    PdfReader = pdf_module.PdfReader
+    reader = PdfReader(BytesIO(pdf_bytes))
+    chunks: list[str] = []
+    for page in reader.pages:
+        chunks.append(page.extract_text() or "")
+    text = "\n".join(chunk.strip() for chunk in chunks if chunk.strip())
+    if not text:
+        return "[PDF parsed but no extractable text was found.]"
+    return text
+
+
+def _looks_like_document_link(href: str) -> bool:
+    lowered = href.lower()
+    return lowered.endswith((".pdf", ".doc", ".docx", ".txt", ".rtf"))
+
+
+def _extract_fallback_text(html: str, base_url: str) -> str:
+    """Extract metadata and linked-doc hints when visible page text is sparse."""
+    soup = BeautifulSoup(html, "html.parser")
+    lines: list[str] = []
+
+    if soup.title and soup.title.string:
+        lines.append(f"Title: {soup.title.string.strip()}")
+
+    for key in ("description", "og:description", "twitter:description"):
+        tag = soup.find("meta", attrs={"name": key}) or soup.find("meta", attrs={"property": key})
+        if tag and tag.get("content"):
+            lines.append(f"{key}: {tag['content'].strip()}")
+
+    link_lines: list[str] = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        if _looks_like_document_link(href):
+            label = a.get_text(" ", strip=True) or href
+            link_lines.append(f"{label}: {href}")
+        if len(link_lines) >= _MAX_FALLBACK_DOC_LINKS:
+            break
+
+    if link_lines:
+        lines.append("Possible document links:")
+        lines.extend(link_lines)
+
+    if not lines:
+        lines.append(f"Unable to extract meaningful text from {base_url}.")
+        lines.append("The page may require JavaScript rendering or anti-bot challenges.")
+
+    return "\n".join(lines)
+
+
+def _is_likely_unscrapable_page(raw_html: str) -> bool:
+    """Heuristic for JS-gated / anti-bot pages with poor extractable text."""
+    lowered = raw_html.lower()
+    markers = (
+        "enable javascript",
+        "access denied",
+        "checking your browser",
+        "cf-browser-verification",
+        "captcha",
+        "are you human",
+        "please turn javascript on",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+# Retries on ConnectionError and on HTTP 429/503. Backoff is jittered
+# exponential: ~2s, ~4s, ~8s (plus 0–1s jitter), capped by any Retry-After
+# header up to 60s. Final attempt does not sleep.
+def fetch_and_clean_text(url: str) -> str:
+    """Fetch a web source and return readable text.
+
+    Supports HTML pages and direct PDF links. For difficult pages where visible
+    HTML text is very sparse, falls back to metadata/doc-link extraction.
+
+    Args:
+        url: The source URL to ingest.
+
+    Returns:
+        Cleaned, human-readable text extracted from the source.
+
+    Raises:
+        requests.HTTPError: If the server returns a non-retryable non-2xx status code.
+        requests.ConnectionError: If all retry attempts fail due to connectivity issues.
+    """
+    safe_url = normalize_and_validate_public_url(url, context="scraper")
+    response = _fetch_with_retries(safe_url)
+    content_type = (response.headers.get("Content-Type") or "").lower()
+
+    is_pdf = safe_url.lower().endswith(".pdf") or "application/pdf" in content_type
+    if is_pdf:
+        content_bytes = getattr(response, "content", None)
+        if content_bytes is None:
+            content_bytes = response.text.encode("utf-8", errors="ignore")
+        return _extract_pdf_text(content_bytes)
+
+    html_text = _clean_html_text(response.text)
+    if html_text and not _is_likely_unscrapable_page(response.text):
+        return html_text
+
+    fallback_text = _extract_fallback_text(response.text, safe_url)
+    if html_text:
+        return f"{html_text}\n\n{fallback_text}"
+    return fallback_text
 
 
 def generate_hash(text: str) -> str:

@@ -94,6 +94,62 @@ def _best_excerpt_and_link(claim: str, source_text: str, base_url: str) -> tuple
     return excerpt, deep_link
 
 
+def _chunk_text(text: str, chunk_size: int = 900) -> list[str]:
+    """Split large source text into compact chunks for relevance scoring."""
+    one_line = re.sub(r"\s+", " ", text).strip()
+    if not one_line:
+        return []
+    return [one_line[i : i + chunk_size] for i in range(0, len(one_line), chunk_size)]
+
+
+def _select_relevant_source_excerpt(
+    source_text: str,
+    claims: list[tuple[int, str]],
+    max_chars: int = 2200,
+) -> str:
+    """Select source excerpts most likely to support the guide claims.
+
+    Long PDFs can be hundreds of thousands of characters. Sending only the
+    opening page hides the sections that contain eligibility, budget, and
+    application details, so we rank chunks by token overlap with all claims.
+    """
+    if len(source_text) <= max_chars:
+        return source_text
+
+    claim_tokens = set()
+    for _, claim in claims:
+        claim_tokens.update(_tokenize(claim))
+    if not claim_tokens:
+        return source_text[:max_chars]
+
+    chunks = _chunk_text(source_text)
+    scored: list[tuple[int, int, str]] = []
+    for idx, chunk in enumerate(chunks):
+        score = len(_tokenize(chunk) & claim_tokens)
+        if score:
+            scored.append((score, idx, chunk))
+
+    if not scored:
+        return source_text[:max_chars]
+
+    selected: list[str] = []
+    used = 0
+    for _, _, chunk in sorted(scored, key=lambda item: (-item[0], item[1])):
+        separator = "\n...\n" if selected else ""
+        candidate_len = len(separator) + len(chunk)
+        if used + candidate_len > max_chars:
+            remaining = max_chars - used - len(separator)
+            if remaining > 200:
+                selected.append(separator + chunk[:remaining])
+            break
+        selected.append(separator + chunk)
+        used += candidate_len
+        if len(selected) >= 3:
+            break
+
+    return "".join(selected) if selected else source_text[:max_chars]
+
+
 def _build_prompt(
     claims: list[tuple[int, str]],
     source_names: list[str],
@@ -107,7 +163,7 @@ def _build_prompt(
 
     source_lines = []
     for name in source_names:
-        excerpt = source_excerpts.get(name, "")[:900]
+        excerpt = source_excerpts.get(name, "")[:2200]
         source_lines.append(
             f'- name: "{name}"\n'
             f'  excerpt: "{excerpt}"'
@@ -172,7 +228,10 @@ def add_citations(
         return guide_md, []
 
     source_names = list(source_url_map.keys())
-    source_excerpts = {name: snapshots_by_name.get(name, "") for name in source_names}
+    source_excerpts = {
+        name: _select_relevant_source_excerpt(snapshots_by_name.get(name, ""), claims)
+        for name in source_names
+    }
 
     prompt = _build_prompt(claims, source_names, source_excerpts)
     response = client.chat.completions.create(

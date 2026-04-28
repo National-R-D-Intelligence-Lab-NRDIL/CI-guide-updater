@@ -17,6 +17,7 @@ DEFAULT_MAX_INPUT_CHARS = 200_000
 MAX_INPUT_CHARS = int(
     os.getenv("LLM_MAX_INPUT_CHARS", str(DEFAULT_MAX_INPUT_CHARS))
 )
+MIN_SOURCE_INPUT_CHARS = 20_000
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,13 @@ def _truncate_for_llm(text: str, max_chars: int, context: str) -> str:
     return text[:max_chars]
 
 
+def _source_input_budget(source_count: int) -> int:
+    """Return a per-source character budget so no source is starved."""
+    if source_count <= 0:
+        return MAX_INPUT_CHARS
+    return max(MIN_SOURCE_INPUT_CHARS, MAX_INPUT_CHARS // source_count)
+
+
 def _normalize_heading_text(heading: str) -> str:
     """Normalize markdown heading text for section-title matching."""
     text = heading.strip().strip("#").strip()
@@ -127,20 +135,30 @@ def generate_guide(
         model_name = get_default_model()
     assert_public_sources(sources, context="guide generation")
 
-    source_texts: list[str] = []
+    scraped_sources: list[tuple[str, str, str]] = []
     for src in sources:
         name, url = src["name"], src["url"]
         logger.info("event=scrape_start source=%s url=%s", name, url)
         try:
             text = scraper.fetch_and_clean_text(url)
-            source_texts.append(
-                f"### Source: {name}\nURL: {url}\n\n{text}"
-            )
+            scraped_sources.append((name, url, text))
         except Exception as exc:
             logger.warning("event=scrape_failed source=%s error=%s", name, exc)
 
-    if not source_texts:
+    if not scraped_sources:
         raise RuntimeError("No sources could be scraped.")
+
+    per_source_budget = _source_input_budget(len(scraped_sources))
+    source_texts: list[str] = []
+    for name, url, text in scraped_sources:
+        source_type = "PDF document" if url.lower().split("?", 1)[0].endswith(".pdf") else "Web page"
+        trimmed = _truncate_for_llm(text, per_source_budget, f"source {name}")
+        source_texts.append(
+            f"### Source: {name}\n"
+            f"URL: {url}\n"
+            f"Source type: {source_type}\n\n"
+            f"{trimmed}"
+        )
 
     combined = "\n\n---\n\n".join(source_texts)
     combined = _truncate_for_llm(

@@ -45,6 +45,24 @@ class CiteGuardrailTests(unittest.TestCase):
         self.assertIn("supports clinical research in rural communities", excerpt.lower())
         self.assertTrue(deep_link.startswith(f"{base_url}#:~:text="))
 
+    def test_select_relevant_source_excerpt_finds_late_pdf_content(self) -> None:
+        claims = [
+            (
+                4,
+                "Applications must be submitted by June 2 2026 through PAMS.",
+            )
+        ]
+        source_text = (
+            "Cover page and table of contents. " * 200
+            + "Submission Deadline for Applications: June 2, 2026, at 11:59 PM ET. "
+            + "Applications must be submitted through PAMS by an authorized representative."
+        )
+
+        excerpt = cite._select_relevant_source_excerpt(source_text, claims, max_chars=900)
+
+        self.assertIn("June 2, 2026", excerpt)
+        self.assertIn("PAMS", excerpt)
+
     @patch("cite.assert_public_sources")
     @patch("cite.get_default_model", return_value="gemini-2.5-flash")
     @patch("cite.get_llm_client")

@@ -9,10 +9,17 @@ import scraper
 
 
 class _MockResponse:
-    def __init__(self, text: str, status_code: int = 200, headers: Optional[dict] = None) -> None:
+    def __init__(
+        self,
+        text: str,
+        status_code: int = 200,
+        headers: Optional[dict] = None,
+        content: Optional[bytes] = None,
+    ) -> None:
         self.text = text
         self.status_code = status_code
         self.headers = headers or {}
+        self.content = content if content is not None else text.encode("utf-8")
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
@@ -82,6 +89,45 @@ class ScraperTests(unittest.TestCase):
         self.assertEqual(mock_get.call_count, 4)
         self.assertEqual(mock_sleep.call_count, 3)
         self.assertEqual([call.args[0] for call in mock_sleep.call_args_list], [2.0, 4.0, 8.0])
+
+    @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
+    @patch("scraper.requests.get")
+    @patch("scraper._extract_pdf_text", return_value="PDF funding guidance")
+    def test_fetch_and_clean_text_supports_pdf_content_type(
+        self,
+        _mock_extract_pdf_text,
+        mock_get,
+        _mock_normalize,
+    ) -> None:
+        mock_get.return_value = _MockResponse(
+            "%PDF-1.7",
+            headers={"Content-Type": "application/pdf"},
+            content=b"%PDF-1.7 fake bytes",
+        )
+
+        text = scraper.fetch_and_clean_text("https://example.org/notice")
+
+        self.assertEqual(text, "PDF funding guidance")
+
+    @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
+    @patch("scraper.requests.get")
+    def test_fetch_and_clean_text_fallback_for_unscrapable_page(
+        self,
+        mock_get,
+        _mock_normalize,
+    ) -> None:
+        html = """
+        <html>
+          <head><title>Access denied</title></head>
+          <body>Please turn JavaScript on and reload the page.</body>
+        </html>
+        """
+        mock_get.return_value = _MockResponse(html)
+
+        text = scraper.fetch_and_clean_text("https://example.org/challenge")
+
+        self.assertIn("Title: Access denied", text)
+        self.assertIn("javascript", text.lower())
 
     @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
     @patch("scraper.requests.get")
