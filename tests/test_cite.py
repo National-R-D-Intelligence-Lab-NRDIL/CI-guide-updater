@@ -106,17 +106,34 @@ class CiteGuardrailTests(unittest.TestCase):
         guide_md = f"# Guide\n\n{claim_line}"
         sources = [{"name": "Source One", "url": "https://example.org/source-one"}]
         snapshots = {"Source One": "shared uniqueword"}
+        source_metadata = {
+            "Source One": {
+                "extraction_method": "pymupdf",
+                "character_count": 1234,
+                "page_count": 10,
+            }
+        }
         llm_payload = '[{"id":"L2","sources":["Source One"]}]'
 
         mock_get_client.return_value = _MockClient(llm_payload)
 
-        cited_md, evidence = cite.add_citations(guide_md, sources, snapshots, min_overlap=0.06)
+        cited_md, evidence = cite.add_citations(
+            guide_md,
+            sources,
+            snapshots,
+            source_metadata_by_name=source_metadata,
+            min_overlap=0.06,
+        )
 
         self.assertIn("[[1]](", cited_md)
         self.assertIn("## References", cited_md)
         self.assertEqual(len(evidence), 1)
         self.assertEqual(evidence[0]["line_id"], "L2")
         self.assertEqual(evidence[0]["sources"], ["Source One"])
+        self.assertEqual(
+            evidence[0]["source_details"][0]["extraction"]["extraction_method"],
+            "pymupdf",
+        )
 
 
 if __name__ == "__main__":

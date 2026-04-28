@@ -302,6 +302,20 @@ def _read_snapshot(name: str, data_dir: str) -> str:
     return ""
 
 
+def _read_snapshot_metadata(name: str, data_dir: str) -> dict:
+    """Return extraction metadata sidecar for a source snapshot, if present."""
+    path = os.path.join(data_dir, f"{name}_latest.meta.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            return {}
+    return {}
+
+
 # ---------------------------------------------------------------------------
 # Markdown → PDF converter
 # ---------------------------------------------------------------------------
@@ -539,12 +553,18 @@ def run_pipeline(
         assert_public_sources(sources, context="pipeline citation step")
         logger.info("step=4 action=citation_pass status=start")
         snapshot_map: dict[str, str] = {}
+        source_metadata_map: dict[str, dict] = {}
         for src in sources:
             name = src["name"]
             txt = _read_snapshot(name, data_dir)
+            source_metadata_map[name] = _read_snapshot_metadata(name, data_dir)
             if not txt and not refresh_citations_only:
                 try:
-                    txt = scraper.fetch_and_clean_text(src["url"])
+                    payload = scraper.fetch_source_payload(src["url"])
+                    txt = payload.get("text", "")
+                    meta = payload.get("metadata", {})
+                    if isinstance(meta, dict):
+                        source_metadata_map[name] = meta
                 except Exception:
                     txt = ""
             snapshot_map[name] = txt
@@ -553,6 +573,7 @@ def run_pipeline(
                 updated_md,
                 sources=sources,
                 snapshots_by_name=snapshot_map,
+                source_metadata_by_name=source_metadata_map,
                 model_name=citation_model or model_name,
             )
             if evidence:

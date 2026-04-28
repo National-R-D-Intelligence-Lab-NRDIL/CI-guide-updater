@@ -189,6 +189,7 @@ def add_citations(
     guide_md: str,
     sources: list[dict],
     snapshots_by_name: dict[str, str],
+    source_metadata_by_name: Optional[dict[str, dict]] = None,
     model_name: Optional[str] = None,
     min_overlap: float = 0.06,
 ) -> tuple[str, list[dict]]:
@@ -220,6 +221,7 @@ def add_citations(
         for s in sources
         if isinstance(s, dict) and s.get("name") and s.get("url")
     }
+    source_metadata_by_name = source_metadata_by_name or {}
     if not source_url_map:
         return guide_md, []
 
@@ -310,6 +312,7 @@ def add_citations(
                     "deep_link": deep_link,
                     "evidence_excerpt": excerpt,
                     "overlap_score": round(score, 4),
+                    "extraction": source_metadata_by_name.get(name, {}),
                 }
             )
 

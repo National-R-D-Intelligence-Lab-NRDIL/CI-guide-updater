@@ -92,7 +92,7 @@ class ScraperTests(unittest.TestCase):
 
     @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
     @patch("scraper.requests.get")
-    @patch("scraper._extract_pdf_text", return_value="PDF funding guidance")
+    @patch("scraper._extract_pdf_text_with_pypdf", return_value=("PDF funding guidance", 12))
     def test_fetch_and_clean_text_supports_pdf_content_type(
         self,
         _mock_extract_pdf_text,
@@ -108,6 +108,30 @@ class ScraperTests(unittest.TestCase):
         text = scraper.fetch_and_clean_text("https://example.org/notice")
 
         self.assertEqual(text, "PDF funding guidance")
+
+    @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
+    @patch("scraper.requests.get")
+    @patch("scraper._extract_pdf_text_with_pymupdf", return_value=("fallback text", 3))
+    @patch("scraper._extract_pdf_text_with_pypdf", side_effect=RuntimeError("pypdf failed"))
+    def test_fetch_source_payload_falls_back_to_pymupdf_when_pypdf_fails(
+        self,
+        _mock_pypdf,
+        _mock_pymupdf,
+        mock_get,
+        _mock_normalize,
+    ) -> None:
+        mock_get.return_value = _MockResponse(
+            "%PDF-1.7",
+            headers={"Content-Type": "application/pdf"},
+            content=b"%PDF-1.7 fake bytes",
+        )
+
+        payload = scraper.fetch_source_payload("https://example.org/notice.pdf")
+
+        self.assertEqual(payload["text"], "fallback text")
+        self.assertEqual(payload["metadata"]["extraction_method"], "pymupdf")
+        self.assertEqual(payload["metadata"]["page_count"], 3)
+        self.assertEqual(payload["metadata"]["character_count"], len("fallback text"))
 
     @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
     @patch("scraper.requests.get")
@@ -193,6 +217,8 @@ class ScraperTests(unittest.TestCase):
             self.assertIn("Source_A", state)
             self.assertIn("hash", state["Source_A"])
             self.assertIn("last_checked", state["Source_A"])
+            self.assertIn("extraction", state["Source_A"])
+            self.assertEqual(state["Source_A"]["extraction"]["extraction_method"], "html")
 
     @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
     @patch("scraper.requests.get")
@@ -219,7 +245,9 @@ class ScraperTests(unittest.TestCase):
 
             self.assertTrue(changed)
             expected_snapshot = data_dir / "NIH_R15_2026_Opportunity__latest.txt"
+            expected_metadata = data_dir / "NIH_R15_2026_Opportunity__latest.meta.json"
             self.assertTrue(expected_snapshot.exists())
+            self.assertTrue(expected_metadata.exists())
 
 
 if __name__ == "__main__":

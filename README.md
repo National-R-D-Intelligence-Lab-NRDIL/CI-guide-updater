@@ -340,6 +340,37 @@ Field summary:
 | `data_class` | Yes | Set to `public` for any source that may be sent to the LLM |
 | `sections` | No | Leave empty unless you want to specify guide sections manually |
 
+## Source Ingestion
+
+The scraper supports both normal web pages and PDF-based sponsor documents.
+
+- For HTML pages, it extracts visible page text.
+- For PDFs, it tries extraction in this order:
+1. `pypdf`
+2. `PyMuPDF` (if installed)
+3. OCR endpoint (if configured)
+
+Optional OCR environment variables:
+
+```env
+OCR_ENDPOINT=
+OCR_API_KEY=
+```
+
+If OCR is configured, it is used only when local PDF extraction cannot produce usable text.
+
+The tool now stores basic extraction metadata to help review quality and debug source behavior:
+
+- extraction method used (`html`, `pypdf`, `pymupdf`, `ocr`)
+- character count
+- page count (when available)
+
+Where this metadata appears:
+
+- `programs/<slug>/state.json` under each source entry (`extraction`)
+- `programs/<slug>/data/<source_name>_latest.meta.json`
+- citation evidence output (`sponsor_guide_evidence.json`) under source details
+
 When the Alternative Funding Intelligence Monitor is enabled, entries in `sources.json` may also include optional metadata fields:
 
 - `funding_type` (`foundation`, `corporate`, `international`, `pharma_partnership`)
@@ -375,6 +406,7 @@ The Streamlit Outputs page reads from this directory and lets you preview or dow
 | `.env` exists but the key is not loading | Re-copy from `.env.example` and check that the file is not empty |
 | `ModuleNotFoundError` | Make sure you installed `requirements.txt` and kept `setup.py` plus `-e .` in place |
 | `No module named 'app'` on Streamlit Cloud | Set the app entrypoint to `app/main.py` and redeploy after installing dependencies |
+| `No module named 'pypdf'` or `No module named 'fitz'` | Install dependencies from `requirements.txt`; `fitz` support requires installing `pymupdf` |
 | `GEMINI_API_KEY is not set` in Streamlit Cloud | Add the key under **App settings > Secrets** so the deployed app can read it |
 | Remote persistence says sync failed | Check `RUNTIME_STORAGE_*` secrets, token scopes, repository name, and repository write access |
 | `Unable to read repository metadata: 404` | The runtime repo name is wrong or the token cannot access that repo |

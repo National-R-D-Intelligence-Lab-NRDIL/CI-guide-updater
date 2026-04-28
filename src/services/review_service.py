@@ -461,16 +461,22 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
         if with_citations:
             assert_public_sources(sources, context="review citation step")
             snapshot_map: dict[str, str] = {}
+            source_metadata_map: dict[str, dict] = {}
             for src in sources:
                 try:
-                    snapshot_map[src["name"]] = scraper.fetch_and_clean_text(src["url"])
+                    payload = scraper.fetch_source_payload(src["url"])
+                    snapshot_map[src["name"]] = payload.get("text", "")
+                    meta = payload.get("metadata", {})
+                    source_metadata_map[src["name"]] = meta if isinstance(meta, dict) else {}
                 except Exception:
                     snapshot_map[src["name"]] = ""
+                    source_metadata_map[src["name"]] = {}
             try:
                 cited_md, evidence = cite.add_citations(
                     guide_md,
                     sources=sources,
                     snapshots_by_name=snapshot_map,
+                    source_metadata_by_name=source_metadata_map,
                 )
                 if evidence:
                     guide_md = cited_md

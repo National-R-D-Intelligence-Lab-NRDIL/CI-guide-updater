@@ -29,6 +29,7 @@ else:
 STATE_FILE = "state.json"
 DATA_DIR = "data"
 _MAX_FALLBACK_DOC_LINKS = 3
+_OCR_TIMEOUT_S = 60
 
 logger = logging.getLogger(__name__)
 
@@ -102,25 +103,110 @@ def _clean_html_text(html: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
-def _extract_pdf_text(pdf_bytes: bytes) -> str:
-    """Extract text content from a PDF byte stream."""
-    try:
-        pdf_module = import_module("pypdf")
-    except ModuleNotFoundError as exc:
-        raise RuntimeError(
-            "PDF support requires the optional dependency 'pypdf'. "
-            "Install it with: pip install 'pypdf>=4,<6'"
-        ) from exc
-
+def _extract_pdf_text_with_pypdf(pdf_bytes: bytes) -> tuple[str, int]:
+    """Extract PDF text with pypdf and return (text, page_count)."""
+    pdf_module = import_module("pypdf")
     PdfReader = pdf_module.PdfReader
     reader = PdfReader(BytesIO(pdf_bytes))
     chunks: list[str] = []
+    pages = len(reader.pages)
     for page in reader.pages:
         chunks.append(page.extract_text() or "")
     text = "\n".join(chunk.strip() for chunk in chunks if chunk.strip())
+    return text, pages
+
+
+def _extract_pdf_text_with_pymupdf(pdf_bytes: bytes) -> tuple[str, int]:
+    """Extract PDF text with PyMuPDF and return (text, page_count)."""
+    fitz = import_module("fitz")
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    chunks: list[str] = []
+    pages = len(doc)
+    for page in doc:
+        chunks.append(page.get_text("text") or "")
+    text = "\n".join(chunk.strip() for chunk in chunks if chunk.strip())
+    return text, pages
+
+
+def _extract_pdf_text_with_ocr(
+    pdf_bytes: bytes,
+    *,
+    endpoint: str,
+    api_key: str,
+) -> str:
+    """Extract PDF text using an external OCR endpoint."""
+    files = {
+        "file": ("document.pdf", pdf_bytes, "application/pdf"),
+    }
+    headers = {"Authorization": f"Bearer {api_key}"}
+    response = requests.post(
+        endpoint,
+        files=files,
+        headers=headers,
+        timeout=_OCR_TIMEOUT_S,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    text = str(payload.get("text", "")).strip()
     if not text:
-        return "[PDF parsed but no extractable text was found.]"
+        raise RuntimeError("OCR endpoint returned no text.")
     return text
+
+
+def _extract_pdf_payload(pdf_bytes: bytes, safe_url: str) -> dict:
+    """Extract PDF text via pypdf, then PyMuPDF fallback, then optional OCR."""
+    last_error: Exception | None = None
+    extraction_method = ""
+    page_count: int | None = None
+    text = ""
+
+    try:
+        text, page_count = _extract_pdf_text_with_pypdf(pdf_bytes)
+        extraction_method = "pypdf"
+    except Exception as exc:
+        last_error = exc
+        logger.warning("source=%s pdf_extract_failed method=pypdf error=%s", safe_url, exc)
+
+    if not text:
+        try:
+            text, page_count = _extract_pdf_text_with_pymupdf(pdf_bytes)
+            extraction_method = "pymupdf"
+        except Exception as exc:
+            last_error = exc
+            logger.warning("source=%s pdf_extract_failed method=pymupdf error=%s", safe_url, exc)
+
+    if not text:
+        endpoint = os.getenv("OCR_ENDPOINT", "").strip()
+        api_key = os.getenv("OCR_API_KEY", "").strip()
+        if endpoint and api_key:
+            try:
+                text = _extract_pdf_text_with_ocr(
+                    pdf_bytes,
+                    endpoint=endpoint,
+                    api_key=api_key,
+                )
+                extraction_method = "ocr"
+            except Exception as exc:
+                last_error = exc
+                logger.warning("source=%s pdf_extract_failed method=ocr error=%s", safe_url, exc)
+
+    if not text:
+        detail = f" Last error: {last_error}" if last_error else ""
+        raise RuntimeError(
+            "Unable to extract PDF text via pypdf, pymupdf, or OCR."
+            + detail
+        )
+
+    return {
+        "text": text,
+        "metadata": {
+            "url": safe_url,
+            "extraction_method": extraction_method,
+            "character_count": len(text),
+            "page_count": page_count,
+            "content_type": "application/pdf",
+        },
+    }
 
 
 def _looks_like_document_link(href: str) -> bool:
@@ -176,6 +262,41 @@ def _is_likely_unscrapable_page(raw_html: str) -> bool:
     return any(marker in lowered for marker in markers)
 
 
+def fetch_source_payload(url: str) -> dict:
+    """Fetch source content and return text plus extraction metadata."""
+    safe_url = normalize_and_validate_public_url(url, context="scraper")
+    response = _fetch_with_retries(safe_url)
+    content_type = (response.headers.get("Content-Type") or "").lower()
+
+    is_pdf = safe_url.lower().endswith(".pdf") or "application/pdf" in content_type
+    if is_pdf:
+        content_bytes = getattr(response, "content", None)
+        if content_bytes is None:
+            content_bytes = response.text.encode("utf-8", errors="ignore")
+        return _extract_pdf_payload(content_bytes, safe_url)
+
+    html_text = _clean_html_text(response.text)
+    extraction_method = "html"
+    final_text = html_text
+    if not (html_text and not _is_likely_unscrapable_page(response.text)):
+        fallback_text = _extract_fallback_text(response.text, safe_url)
+        if html_text:
+            final_text = f"{html_text}\n\n{fallback_text}"
+        else:
+            final_text = fallback_text
+
+    return {
+        "text": final_text,
+        "metadata": {
+            "url": safe_url,
+            "extraction_method": extraction_method,
+            "character_count": len(final_text),
+            "page_count": None,
+            "content_type": content_type or "text/html",
+        },
+    }
+
+
 # Retries on ConnectionError and on HTTP 429/503. Backoff is jittered
 # exponential: ~2s, ~4s, ~8s (plus 0–1s jitter), capped by any Retry-After
 # header up to 60s. Final attempt does not sleep.
@@ -195,25 +316,7 @@ def fetch_and_clean_text(url: str) -> str:
         requests.HTTPError: If the server returns a non-retryable non-2xx status code.
         requests.ConnectionError: If all retry attempts fail due to connectivity issues.
     """
-    safe_url = normalize_and_validate_public_url(url, context="scraper")
-    response = _fetch_with_retries(safe_url)
-    content_type = (response.headers.get("Content-Type") or "").lower()
-
-    is_pdf = safe_url.lower().endswith(".pdf") or "application/pdf" in content_type
-    if is_pdf:
-        content_bytes = getattr(response, "content", None)
-        if content_bytes is None:
-            content_bytes = response.text.encode("utf-8", errors="ignore")
-        return _extract_pdf_text(content_bytes)
-
-    html_text = _clean_html_text(response.text)
-    if html_text and not _is_likely_unscrapable_page(response.text):
-        return html_text
-
-    fallback_text = _extract_fallback_text(response.text, safe_url)
-    if html_text:
-        return f"{html_text}\n\n{fallback_text}"
-    return fallback_text
+    return fetch_source_payload(url)["text"]
 
 
 def generate_hash(text: str) -> str:
@@ -291,7 +394,9 @@ def check_for_updates(
     Returns:
         ``True`` if the content changed (or is new), ``False`` otherwise.
     """
-    text = fetch_and_clean_text(url)
+    payload = fetch_source_payload(url)
+    text = payload["text"]
+    metadata = payload.get("metadata", {})
     new_hash = generate_hash(text)
     now = datetime.now(timezone.utc).isoformat()
 
@@ -309,12 +414,16 @@ def check_for_updates(
     data_path = os.path.join(data_dir, f"{safe_name}_latest.txt")
     with open(data_path, "w", encoding="utf-8") as fh:
         fh.write(text)
+    metadata_path = os.path.join(data_dir, f"{safe_name}_latest.meta.json")
+    with open(metadata_path, "w", encoding="utf-8") as meta_fh:
+        json.dump(metadata, meta_fh, indent=2)
 
     label = "updated" if entry else "new entry"
     state[name] = {
         "url": url,
         "hash": new_hash,
         "last_checked": now,
+        "extraction": metadata,
     }
     _save_state(state, state_file)
     logger.info(
