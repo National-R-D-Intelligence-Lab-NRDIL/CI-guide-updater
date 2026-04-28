@@ -49,6 +49,7 @@ import scraper
 import updater
 from src.utils.llm_client import get_default_model
 from src.utils.logging_utils import configure_rotating_file_logging
+from src.utils.sensitive_data import SensitiveDataError
 from src.utils.source_policy import assert_public_sources
 
 try:
@@ -582,6 +583,9 @@ def run_pipeline(
             else:
                 logger.warning("step=4 action=citation_pass status=no_validated_citations")
         except Exception as exc:
+            if isinstance(exc, SensitiveDataError):
+                logger.error("step=4 action=citation_pass status=blocked error=%s", exc)
+                return False
             logger.warning(
                 "step=4 action=citation_pass status=failed error=%s fallback=continue_without_citations",
                 exc,

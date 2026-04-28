@@ -16,6 +16,7 @@ from src.services.persistence_service import (
     persist_paths,
 )
 from src.utils.errors import UserFacingError, format_exception
+from src.utils.sensitive_data import SensitiveDataError
 from src.utils.source_policy import assert_public_sources, normalize_and_validate_public_url
 
 
@@ -481,6 +482,8 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
                 if evidence:
                     guide_md = cited_md
                     citation_count = len(evidence)
+            except SensitiveDataError:
+                raise
             except Exception:
                 pass
 

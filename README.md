@@ -254,6 +254,29 @@ python3 pipeline.py programs/<slug>/guide.md \
 
 The citation layer is guarded so it only uses approved source names and checks the generated references against the scraped text. If no website changes are found, the pipeline exits without overwriting the guide.
 
+### Sensitive data guardrail
+
+Before guide generation, weekly updates, section classification, or citation mapping sends text to the LLM, the tool scans the prompt text for obvious sensitive/internal data:
+
+- SSN-like numbers
+- student ID-like numbers
+- credit card-like numbers
+- private email-heavy documents
+- keywords such as `confidential`, `internal use only`, `FERPA`, `HIPAA`, `CUI`, and `ITAR`
+
+If a risky pattern is found, the UI and CLI use this message:
+
+```text
+This source may contain sensitive/internal data. Use local model mode or remove it.
+```
+
+Default behavior is to block the LLM handoff for external providers. Local model mode defaults to warning instead. Override the behavior with:
+
+```env
+SENSITIVE_DATA_POLICY=block  # block, warn, or off
+LLM_LOCAL_MODE=false         # set true for a local-only model workflow
+```
+
 ## Unit Tests
 
 Run the full test suite:
@@ -268,6 +291,7 @@ Run focused guardrail suites:
 python3 -m pytest tests/test_cite.py
 python3 -m pytest tests/test_differ.py
 python3 -m pytest tests/test_scraper.py
+python3 -m pytest tests/test_sensitive_data.py
 ```
 
 These tests protect key hallucination and regression boundaries:

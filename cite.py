@@ -13,6 +13,7 @@ from typing import Optional
 from urllib.parse import quote
 
 from src.utils.llm_client import get_default_model, get_llm_client
+from src.utils.sensitive_data import enforce_sensitive_data_policy
 from src.utils.source_policy import assert_public_sources
 
 
@@ -236,6 +237,10 @@ def add_citations(
     }
 
     prompt = _build_prompt(claims, source_names, source_excerpts)
+    enforce_sensitive_data_policy(
+        prompt,
+        context="citation generation prompt",
+    )
     response = client.chat.completions.create(
         model=model_name,
         messages=[

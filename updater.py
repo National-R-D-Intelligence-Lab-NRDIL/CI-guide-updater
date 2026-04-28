@@ -15,6 +15,7 @@ from typing import Optional
 from openai import APIConnectionError, APIStatusError
 
 from src.utils.llm_client import get_default_model, get_llm_client
+from src.utils.sensitive_data import enforce_sensitive_data_policy
 
 DEFAULT_MAX_INPUT_CHARS = 200_000
 MAX_INPUT_CHARS = int(
@@ -118,6 +119,10 @@ def update_guide(
         diff_text,
         MAX_INPUT_CHARS,
     )
+    enforce_sensitive_data_policy(
+        f"{current_guide_md}\n\n{diff_text}",
+        context="guide update prompt",
+    )
     user_prompt = _build_user_prompt(current_guide_md, diff_text)
 
     response = client.chat.completions.create(
@@ -161,6 +166,10 @@ def classify_sections(
 
     heading_list = "\n".join(f"- {h.strip()}" for h in headings)
     snippet = page_text[:3000]
+    enforce_sensitive_data_policy(
+        f"{guide_md}\n\n{snippet}",
+        context="section classification prompt",
+    )
 
     try:
         client = get_llm_client()

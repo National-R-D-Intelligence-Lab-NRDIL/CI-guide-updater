@@ -378,6 +378,7 @@ if finalize_clicked:
 st.divider()
 st.markdown("### Generate the first draft")
 st.write("Generate the initial draft with citations from approved sources. Output files (markdown, Word, PDF) are created immediately and available on the **View Outputs** page.")
+st.warning("This source may contain sensitive/internal data. Use local model mode or remove it.")
 with st.container(border=True):
     draft_citations = st.checkbox("Enable citations", value=True, key="draft_citations")
 if st.button("Generate First Draft", use_container_width=True):

@@ -11,6 +11,7 @@ from typing import Optional
 
 import scraper
 from src.utils.llm_client import get_default_model, get_llm_client
+from src.utils.sensitive_data import enforce_sensitive_data_policy
 from src.utils.source_policy import assert_public_sources
 
 DEFAULT_MAX_INPUT_CHARS = 200_000
@@ -153,6 +154,10 @@ def generate_guide(
     for name, url, text in scraped_sources:
         source_type = "PDF document" if url.lower().split("?", 1)[0].endswith(".pdf") else "Web page"
         trimmed = _truncate_for_llm(text, per_source_budget, f"source {name}")
+        enforce_sensitive_data_policy(
+            trimmed,
+            context=f"guide generation source '{name}'",
+        )
         source_texts.append(
             f"### Source: {name}\n"
             f"URL: {url}\n"
@@ -165,6 +170,10 @@ def generate_guide(
         combined,
         MAX_INPUT_CHARS,
         "combined source text",
+    )
+    enforce_sensitive_data_policy(
+        combined,
+        context="guide generation combined source text",
     )
 
     user_prompt = (
