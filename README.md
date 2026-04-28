@@ -254,20 +254,22 @@ python3 pipeline.py programs/<slug>/guide.md \
 
 The citation layer is guarded so it only uses approved source names and checks the generated references against the scraped text. If no website changes are found, the pipeline exits without overwriting the guide.
 
-### Sensitive data guardrail
+### Private data guardrail
 
-Before guide generation, weekly updates, section classification, or citation mapping sends text to the LLM, the tool scans the prompt text for obvious sensitive/internal data:
+Before guide generation, weekly updates, section classification, or citation mapping sends text to the LLM, the tool scans the prompt text for obvious private data:
 
 - SSN-like numbers
 - student ID-like numbers
 - credit card-like numbers
 - private email-heavy documents
-- keywords such as `confidential`, `internal use only`, `FERPA`, `HIPAA`, `CUI`, and `ITAR`
+- private-data phrases such as `protected health information`, `patient record`, `private student record`, `personally identifiable information`, and `PII`
+
+Public policy language alone, such as sponsor guidance mentioning `FERPA`, `HIPAA`, `CUI`, `ITAR`, `confidential`, or `internal use only`, does not trigger the private-data block.
 
 If a risky pattern is found, the UI and CLI use this message:
 
 ```text
-This source may contain sensitive/internal data. Use local model mode or remove it.
+This source may contain private data. Use local model mode or remove it.
 ```
 
 Default behavior is to block the LLM handoff for external providers. Local model mode defaults to warning instead. Override the behavior with:

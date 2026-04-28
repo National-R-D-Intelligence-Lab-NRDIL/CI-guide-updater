@@ -5,7 +5,7 @@ from src.utils import sensitive_data
 
 def test_detects_obvious_sensitive_patterns() -> None:
     text = (
-        "Confidential internal use only. FERPA record. "
+        "Personally identifiable information record. "
         "SSN 123-45-6789. Student ID: A1234567. "
         "Card 4111 1111 1111 1111."
     )
@@ -16,6 +16,15 @@ def test_detects_obvious_sensitive_patterns() -> None:
     assert "ssn" in kinds
     assert "student_id" in kinds
     assert "credit_card" in kinds
+
+
+def test_public_policy_keywords_do_not_trigger_private_data_detection() -> None:
+    text = (
+        "This public funding opportunity discusses FERPA, HIPAA, CUI, ITAR, "
+        "confidentiality, and internal use only policies for applicants."
+    )
+
+    assert sensitive_data.detect_sensitive_data(text) == []
 
 
 def test_detects_private_email_heavy_documents() -> None:
@@ -37,7 +46,7 @@ def test_detects_private_email_heavy_documents() -> None:
 def test_enforce_blocks_by_policy() -> None:
     with pytest.raises(sensitive_data.SensitiveDataError, match="Use local model mode"):
         sensitive_data.enforce_sensitive_data_policy(
-            "HIPAA confidential record",
+            "Private student record with SSN 123-45-6789",
             context="unit test",
             policy="block",
         )
@@ -45,7 +54,7 @@ def test_enforce_blocks_by_policy() -> None:
 
 def test_enforce_warns_by_policy(caplog) -> None:
     findings = sensitive_data.enforce_sensitive_data_policy(
-        "CUI internal use only",
+        "Patient record with personally identifiable information",
         context="unit test",
         policy="warn",
     )

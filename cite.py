@@ -243,6 +243,11 @@ def add_citations(
         name: _select_relevant_source_excerpt(snapshots_by_name.get(name, ""), claims)
         for name in source_names
     }
+    for name, excerpt in source_excerpts.items():
+        enforce_sensitive_data_policy(
+            excerpt,
+            context=f"citation generation source '{name}'",
+        )
 
     prompt = _build_prompt(claims, source_names, source_excerpts)
     enforce_sensitive_data_policy(

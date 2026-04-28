@@ -49,7 +49,7 @@ import scraper
 import updater
 from src.utils.llm_client import get_default_model
 from src.utils.logging_utils import configure_rotating_file_logging
-from src.utils.sensitive_data import SensitiveDataError
+from src.utils.sensitive_data import SensitiveDataError, enforce_sensitive_data_policy
 from src.utils.source_policy import assert_public_sources
 
 try:
@@ -536,6 +536,10 @@ def run_pipeline(
                     "\nRelevant guide sections: "
                     + ", ".join(f'"{s}"' for s in sections)
                 )
+            enforce_sensitive_data_policy(
+                diff,
+                context=f"pipeline update source '{name}'",
+            )
             diff_blocks.append(f"{header}\n\n{diff}")
         combined_diff = "\n\n".join(diff_blocks)
 

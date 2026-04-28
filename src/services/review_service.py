@@ -17,7 +17,7 @@ from src.services.persistence_service import (
     persist_paths,
 )
 from src.utils.errors import UserFacingError, format_exception
-from src.utils.sensitive_data import SensitiveDataError
+from src.utils.sensitive_data import SensitiveDataError, format_sensitive_data_error
 from src.utils.source_policy import assert_public_sources, normalize_and_validate_public_url
 
 
@@ -610,6 +610,9 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
         }
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}
+    except SensitiveDataError as exc:
+        error, detail = format_sensitive_data_error(exc)
+        return {"ok": False, "error": error, "detail": detail}
     except Exception as exc:  # pragma: no cover
         return {"ok": False, "error": "Failed to generate first draft.", "detail": format_exception(exc)}
 

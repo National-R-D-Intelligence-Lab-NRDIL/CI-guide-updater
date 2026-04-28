@@ -72,7 +72,7 @@ with st.container(border=True):
         else "check all sources for updates and regenerate the guide"
     )
     st.warning(f"This will **{mode_label}** for the selected workspace.")
-    st.warning("This source may contain sensitive/internal data. Use local model mode or remove it.")
+    st.caption("Private-data checks run before source text is sent to the LLM.")
     confirm = st.checkbox(
         "I confirm I want to run the update now",
         value=False,

@@ -166,7 +166,7 @@ def generate_guide(
         trimmed = _truncate_for_llm(text, per_source_budget, f"source {name}")
         enforce_sensitive_data_policy(
             trimmed,
-            context=f"guide generation source '{name}'",
+            context=f"guide generation source '{name}' ({source_ref})",
         )
         source_texts.append(
             f"### Source: {name}\n"

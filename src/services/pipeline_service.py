@@ -10,6 +10,7 @@ import pipeline
 from src.services.persistence_service import hydrate_program, persist_program
 from src.utils.errors import UserFacingError, format_exception
 from src.utils.logging_utils import capture_logs
+from src.utils.sensitive_data import SensitiveDataError, format_sensitive_data_error
 
 
 def _resolve_default_guide(program_dir: Path) -> Path:
@@ -89,5 +90,8 @@ def run_weekly_update(
         }
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}
+    except SensitiveDataError as exc:
+        error, detail = format_sensitive_data_error(exc)
+        return {"ok": False, "error": error, "detail": detail}
     except Exception as exc:  # pragma: no cover
         return {"ok": False, "error": "Weekly update failed.", "detail": format_exception(exc)}

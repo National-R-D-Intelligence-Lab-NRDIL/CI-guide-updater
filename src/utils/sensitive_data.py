@@ -11,7 +11,7 @@ from src.utils.secrets import get_secret
 
 
 SENSITIVE_DATA_MESSAGE = (
-    "This source may contain sensitive/internal data. Use local model mode or remove it."
+    "This source may contain private data. Use local model mode or remove it."
 )
 VALID_POLICIES = {"block", "warn", "off"}
 
@@ -28,8 +28,9 @@ _STUDENT_ID_RE = re.compile(
     re.IGNORECASE,
 )
 _CREDIT_CARD_RE = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
-_KEYWORD_RE = re.compile(
-    r"\b(confidential|internal use only|FERPA|HIPAA|CUI|ITAR)\b",
+_PRIVATE_KEYWORD_RE = re.compile(
+    r"\b(private student record|protected health information|patient record|"
+    r"medical record|personally identifiable information|PII)\b",
     re.IGNORECASE,
 )
 
@@ -126,12 +127,12 @@ def detect_sensitive_data(text: str) -> list[SensitiveDataFinding]:
             )
         )
 
-    keywords = _KEYWORD_RE.findall(content)
+    keywords = _PRIVATE_KEYWORD_RE.findall(content)
     if keywords:
         findings.append(
             SensitiveDataFinding(
                 "sensitive_keyword",
-                "sensitive/internal keyword",
+                "private-data keyword",
                 len(keywords),
             )
         )
@@ -145,6 +146,17 @@ def format_sensitive_data_summary(findings: list[SensitiveDataFinding]) -> str:
         return ""
     labels = ", ".join(f"{finding.label} ({finding.count})" for finding in findings)
     return f"Detected: {labels}."
+
+
+def format_sensitive_data_error(exc: SensitiveDataError) -> tuple[str, str]:
+    """Return UI-safe message/detail for a blocked sensitive-data handoff."""
+    summary = format_sensitive_data_summary(exc.findings)
+    detail_parts = []
+    if exc.context:
+        detail_parts.append(f"Blocked source/context: {exc.context}.")
+    if summary:
+        detail_parts.append(summary)
+    return SENSITIVE_DATA_MESSAGE, " ".join(detail_parts)
 
 
 def _is_local_model_mode() -> bool:
