@@ -31,7 +31,7 @@ render_page_header(
     step_label="Step 4",
 )
 st.info("Weekly Update requires a baseline `guide.md`. Generate the first draft and promote it in **Review & Generate** before running updates here.")
-st.caption("When source changes are found, the updated guide gets a top update banner and red highlights on changed main-text lines.")
+st.caption("Each run uses the latest generated guide as its starting point when one exists, then writes both latest files and timestamped history files.")
 
 st.markdown("### Choose the program to update")
 st.caption("Select a program that already has a promoted baseline guide.")
@@ -115,7 +115,7 @@ if run_clicked:
     st.session_state["last_run_result"] = result
     st.success("Weekly update executed.")
     st.write(f"**Program:** `{result['program_slug']}`")
-    st.write(f"**Guide input:** `{result['guide_path']}`")
+    st.write(f"**Compared against guide:** `{result['guide_path']}`")
     st.write(f"**Sources:** `{result['sources_path']}`")
     st.write(f"**Output directory:** `{result['output_dir']}`")
 
@@ -125,7 +125,7 @@ if run_clicked:
     col3.metric("Artifacts produced", len(result["artifacts"]))
 
     if result["artifacts"]:
-        st.subheader("Artifacts")
+        st.subheader("Artifacts saved by this run")
         for artifact in result["artifacts"]:
             st.code(artifact)
 

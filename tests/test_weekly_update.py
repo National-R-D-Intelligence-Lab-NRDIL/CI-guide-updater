@@ -46,3 +46,25 @@ def test_strip_weekly_update_markup_removes_generated_banner_and_spans() -> None
     )
 
     assert weekly_update.strip_weekly_update_markup(marked) == "Changed text"
+
+
+def test_decorate_weekly_update_compares_against_previous_clean_run() -> None:
+    previous_run = (
+        "<!-- weekly-update-banner:start -->\n"
+        "## Weekly Update\n"
+        "<!-- weekly-update-banner:end -->\n\n"
+        "# Guide\n\n"
+        '<span style="color: #c1121f;">Deadline: April 15</span>\n'
+        "Budget: $300,000"
+    )
+    next_run = "# Guide\n\nDeadline: May 20\nBudget: $300,000"
+
+    result = weekly_update.decorate_weekly_update(
+        previous_run,
+        next_run,
+        "### Added/Modified Text\n\n  + Deadline: May 20",
+        ["Main_Source"],
+    )
+
+    assert '<span style="color: #c1121f;">Deadline: May 20</span>' in result
+    assert '<span style="color: #c1121f;">Budget: $300,000</span>' not in result

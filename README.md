@@ -136,6 +136,9 @@ programs/nsf_career_award/
 │   ├── sponsor_guide_updated.md
 │   ├── sponsor_guide_updated.docx
 │   ├── sponsor_guide_updated.pdf
+│   ├── sponsor_guide_updated_YYYYMMDD_HHMMSS.md
+│   ├── sponsor_guide_updated_YYYYMMDD_HHMMSS.docx
+│   ├── sponsor_guide_updated_YYYYMMDD_HHMMSS.pdf
 │   └── sponsor_guide_evidence.json
 └── review/
     ├── sources_pending.json
@@ -209,26 +212,29 @@ python3 collect_review.py "NSF Faculty Early Career Development (CAREER) Program
 Use this command to refresh an existing guide after sponsor pages have changed. This is not needed for the initial draft — output files are already produced during generation.
 
 ```bash
-python3 pipeline.py programs/<slug>/guide.md \
+python3 pipeline.py programs/<slug>/output/sponsor_guide_updated.md \
   --sources programs/<slug>/sources.json
 ```
 
 Example:
 
 ```bash
-python3 pipeline.py programs/nsf_career/guide.md \
+python3 pipeline.py programs/nsf_career/output/sponsor_guide_updated.md \
   --sources programs/nsf_career/sources.json
 ```
+
+For the first weekly run after baseline promotion, you can use `programs/<slug>/guide.md` if no `output/sponsor_guide_updated.md` exists yet. In the Streamlit UI, Weekly Update picks the latest generated guide automatically and falls back to `guide.md` only for that first run.
 
 What happens during a run:
 
 1. Every source URL is scraped again.
 2. The new content is compared with the last snapshot.
-3. If anything changed, the diff is sent to Gemini.
-4. Gemini rewrites only the affected sections.
-5. A **Weekly Update** banner is added to the top of the guide with the most important detected changes.
-6. Main-text lines changed by the update are highlighted in red in the markdown preview and generated outputs.
-7. Updated artifacts are written to `programs/<slug>/output/`.
+3. The guide input is the previous generated guide, not always the original first baseline.
+4. If anything changed, the diff is sent to Gemini.
+5. Gemini rewrites only the affected sections.
+6. A **Weekly Update** banner is added to the top of the guide with the most important detected changes.
+7. Main-text lines changed since the previous guide are highlighted in red in the markdown preview and generated outputs.
+8. Updated artifacts are written to `programs/<slug>/output/`.
 
 The pipeline can also write an evidence file at `programs/<slug>/output/sponsor_guide_evidence.json`.
 
@@ -431,9 +437,18 @@ Common artifacts include:
 - `sponsor_guide_updated.pdf`
 - `sponsor_guide_evidence.json` (citation evidence, only when citations are enabled)
 
+Each output-producing weekly run also writes timestamped history files using local time:
+
+- `sponsor_guide_updated_YYYYMMDD_HHMMSS.md`
+- `sponsor_guide_updated_YYYYMMDD_HHMMSS.docx`
+- `sponsor_guide_updated_YYYYMMDD_HHMMSS.pdf`
+- `sponsor_guide_evidence_YYYYMMDD_HHMMSS.json` (when citation evidence is generated)
+
+The non-timestamped files remain the latest-copy convenience files used by the UI and by the next weekly update run.
+
 After a weekly update with detected source changes, the updated guide includes a top **Weekly Update** section summarizing important changes and red highlights on changed main-text lines. Deletions are summarized in the banner because removed text no longer appears in the document body.
 
-The Streamlit Outputs page reads from this directory and lets you preview or download the available files. If no output directory exists yet, it falls back to showing the draft or baseline guide.
+The Streamlit Outputs page reads from this directory and lets you preview or download the latest and timestamped historical files. If no output directory exists yet, it falls back to showing the draft or baseline guide.
 
 ## Troubleshooting
 

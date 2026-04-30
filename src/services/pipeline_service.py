@@ -14,12 +14,28 @@ from src.utils.sensitive_data import SensitiveDataError, format_sensitive_data_e
 
 
 def _resolve_default_guide(program_dir: Path) -> Path:
+    latest_output = program_dir / "output" / "sponsor_guide_updated.md"
+    if latest_output.exists():
+        return latest_output
+
     guide_md = program_dir / "guide.md"
     if guide_md.exists():
         return guide_md
     raise UserFacingError(
-        "Baseline guide.md not found. In Review Sources, generate the first draft and promote it to baseline first."
+        "No previous guide found. Generate the first draft, promote it to baseline, or restore the latest weekly output first."
     )
+
+
+def _artifacts_from_logs(logs: str) -> list[str]:
+    """Return artifacts saved by the current pipeline run."""
+    artifacts: list[str] = []
+    seen: set[str] = set()
+    for path in re.findall(r"artifact=[^ ]+ status=saved path=(.+)", logs):
+        path = path.strip()
+        if path and path not in seen:
+            artifacts.append(path)
+            seen.add(path)
+    return artifacts
 
 
 def run_weekly_update(
@@ -64,16 +80,17 @@ def run_weekly_update(
         for item in auto_section_lines:
             changed_sections += len([s for s in item.split(",") if s.strip()])
 
-        artifacts = []
-        for name in [
-            "sponsor_guide_updated.md",
-            "sponsor_guide_updated.docx",
-            "sponsor_guide_updated.pdf",
-            "sponsor_guide_evidence.json",
-        ]:
-            path = output_dir / name
-            if path.exists():
-                artifacts.append(str(path))
+        artifacts = _artifacts_from_logs(logs)
+        if not artifacts:
+            for name in [
+                "sponsor_guide_updated.md",
+                "sponsor_guide_updated.docx",
+                "sponsor_guide_updated.pdf",
+                "sponsor_guide_evidence.json",
+            ]:
+                path = output_dir / name
+                if path.exists():
+                    artifacts.append(str(path))
 
         storage = persist_program(program_slug)
         return {

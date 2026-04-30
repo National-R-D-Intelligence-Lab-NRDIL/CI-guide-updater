@@ -20,6 +20,38 @@ def _metadata(path: Path) -> dict[str, Any]:
     }
 
 
+def _output_artifacts(output_dir: Path) -> list[dict[str, Any]]:
+    """Return latest and timestamped output artifacts."""
+    patterns = [
+        "sponsor_guide_updated*.md",
+        "sponsor_guide_updated*.docx",
+        "sponsor_guide_updated*.pdf",
+        "sponsor_guide_evidence*.json",
+    ]
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    for pattern in patterns:
+        for path in output_dir.glob(pattern):
+            if path.is_file() and path not in seen:
+                paths.append(path)
+                seen.add(path)
+
+    latest_names = {
+        "sponsor_guide_updated.md",
+        "sponsor_guide_updated.docx",
+        "sponsor_guide_updated.pdf",
+        "sponsor_guide_evidence.json",
+    }
+    paths.sort(
+        key=lambda path: (
+            0 if path.name in latest_names else 1,
+            -path.stat().st_mtime,
+            path.name,
+        )
+    )
+    return [_metadata(path) for path in paths]
+
+
 def load_outputs(program_slug: str) -> dict[str, Any]:
     """Load output artifact metadata and markdown preview content for a program."""
     try:
@@ -49,16 +81,7 @@ def load_outputs(program_slug: str) -> dict[str, Any]:
                 "remote_program_url": program_remote_url(program_slug),
             }
 
-        artifacts = []
-        for name in [
-            "sponsor_guide_updated.md",
-            "sponsor_guide_updated.docx",
-            "sponsor_guide_updated.pdf",
-            "sponsor_guide_evidence.json",
-        ]:
-            path = output_dir / name
-            if path.exists():
-                artifacts.append(_metadata(path))
+        artifacts = _output_artifacts(output_dir)
 
         latest_md_path = output_dir / "sponsor_guide_updated.md"
         baseline_md_path = program_dir / "guide.md"

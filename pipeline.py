@@ -32,6 +32,8 @@ import json
 import logging
 import os
 import re
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -160,6 +162,16 @@ def write_guide_md(path: str, content: str) -> None:
         fh.write(content)
 
 
+def _artifact_timestamp() -> str:
+    """Return a filename-safe local timestamp for run history artifacts."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def _timestamped_output_path(output_dir: str, stem: str, suffix: str, timestamp: str) -> str:
+    """Build a timestamped output artifact path."""
+    return os.path.join(output_dir, f"{stem}_{timestamp}{suffix}")
+
+
 # ---------------------------------------------------------------------------
 # Markdown → .docx converter (basic)
 # ---------------------------------------------------------------------------
@@ -259,7 +271,7 @@ def _add_hyperlink(paragraph, text: str, url: str, color_hex: str = "0000FF") ->
     paragraph._p.append(hyperlink)
 
 
-def _add_emphasis_runs(paragraph, text: str, color_hex: str | None = None) -> None:
+def _add_emphasis_runs(paragraph, text: str, color_hex: Optional[str] = None) -> None:
     """Parse **bold** and *italic* in plain text segments."""
     def _style_run(run) -> None:
         if color_hex:
@@ -290,7 +302,7 @@ def _add_emphasis_runs(paragraph, text: str, color_hex: str | None = None) -> No
         _style_run(run)
 
 
-def _add_inline_formatting(paragraph, text: str, color_hex: str | None = None) -> None:
+def _add_inline_formatting(paragraph, text: str, color_hex: Optional[str] = None) -> None:
     """Parse links, emphasis, and weekly-update red spans."""
     span_pat = re.compile(
         r'<span style="color:\s*#?c1121f;">(.*?)</span>',
@@ -489,7 +501,8 @@ def run_pipeline(
 
     logger.info("step=1 action=load_inputs status=start")
     sources = load_sources(sources_config)
-    guide_md = read_guide(guide_path)
+    guide_md_raw = read_guide(guide_path)
+    guide_md = weekly_update.strip_weekly_update_markup(guide_md_raw)
     assert_public_sources(sources, context="pipeline")
     logger.info(
         "step=1 action=load_inputs status=done sources=%d guide_path=%s state_file=%s data_dir=%s",
@@ -547,7 +560,7 @@ def run_pipeline(
         logger.info("result=up_to_date reason=no_source_changes")
         return False
 
-    updated_md = guide_md
+    updated_md = guide_md_raw if refresh_citations else guide_md
     did_llm_update = False
     combined_diff = ""
     changed_source_names: list[str] = []
@@ -640,22 +653,47 @@ def run_pipeline(
     step_label = "[5/5]" if with_citations else "[4/4]"
     logger.info("step=%s action=save_outputs status=start", step_label.strip("[]"))
     os.makedirs(output_dir, exist_ok=True)
+    run_stamp = _artifact_timestamp()
 
     md_path = os.path.join(output_dir, "sponsor_guide_updated.md")
+    timestamped_md_path = _timestamped_output_path(
+        output_dir,
+        "sponsor_guide_updated",
+        ".md",
+        run_stamp,
+    )
     write_guide_md(md_path, updated_md)
     logger.info("step=5 artifact=markdown status=saved path=%s", md_path)
+    write_guide_md(timestamped_md_path, updated_md)
+    logger.info("step=5 artifact=markdown_timestamped status=saved path=%s", timestamped_md_path)
 
     docx_path = os.path.join(output_dir, "sponsor_guide_updated.docx")
+    timestamped_docx_path = _timestamped_output_path(
+        output_dir,
+        "sponsor_guide_updated",
+        ".docx",
+        run_stamp,
+    )
     try:
         _md_to_docx(updated_md, docx_path)
         logger.info("step=5 artifact=docx status=saved path=%s", docx_path)
+        shutil.copyfile(docx_path, timestamped_docx_path)
+        logger.info("step=5 artifact=docx_timestamped status=saved path=%s", timestamped_docx_path)
     except Exception as exc:
         logger.warning("step=5 artifact=docx status=failed error=%s", exc)
 
     pdf_path = os.path.join(output_dir, "sponsor_guide_updated.pdf")
+    timestamped_pdf_path = _timestamped_output_path(
+        output_dir,
+        "sponsor_guide_updated",
+        ".pdf",
+        run_stamp,
+    )
     try:
         _md_to_pdf(updated_md, pdf_path)
         logger.info("step=5 artifact=pdf status=saved path=%s", pdf_path)
+        shutil.copyfile(pdf_path, timestamped_pdf_path)
+        logger.info("step=5 artifact=pdf_timestamped status=saved path=%s", timestamped_pdf_path)
     except ImportError as exc:
         logger.warning("step=5 artifact=pdf status=skipped reason=dependency_missing error=%s", exc)
     except Exception as exc:
@@ -663,9 +701,18 @@ def run_pipeline(
 
     if with_citations and evidence:
         evidence_path = os.path.join(output_dir, "sponsor_guide_evidence.json")
+        timestamped_evidence_path = _timestamped_output_path(
+            output_dir,
+            "sponsor_guide_evidence",
+            ".json",
+            run_stamp,
+        )
         with open(evidence_path, "w", encoding="utf-8") as fh:
             json.dump(evidence, fh, indent=2)
         logger.info("step=5 artifact=evidence status=saved path=%s", evidence_path)
+        with open(timestamped_evidence_path, "w", encoding="utf-8") as fh:
+            json.dump(evidence, fh, indent=2)
+        logger.info("step=5 artifact=evidence_timestamped status=saved path=%s", timestamped_evidence_path)
 
     if did_llm_update:
         logger.info("result=updated changed_sources=%s", ",".join(n for n, _, _ in all_diffs))

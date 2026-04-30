@@ -55,7 +55,7 @@ if result.get("baseline_path"):
     st.caption(f"Baseline guide: `{result['baseline_path']}`")
 if result.get("draft_path"):
     st.caption(f"Pre-baseline draft: `{result['draft_path']}`")
-show_table(result["artifacts"], title="Artifact Metadata")
+show_table(result["artifacts"], title="Latest and Historical Artifact Metadata")
 
 if result["markdown_content"]:
     markdown_preview(result["markdown_content"], title="Latest Markdown")
