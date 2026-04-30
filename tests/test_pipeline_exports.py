@@ -25,3 +25,34 @@ def test_docx_export_preserves_weekly_highlight_color(tmp_path: Path) -> None:
 
     assert 'w:val="C1121F"' in document_xml
     assert "Changed deadline" in document_xml
+
+
+def test_docx_export_strips_comment_markers_and_span_tags_from_headings(tmp_path: Path) -> None:
+    docx_path = tmp_path / "guide.docx"
+
+    pipeline._md_to_docx(
+        "<!-- weekly-update-banner:end -->\n"
+        '## <span style="color: #c1121f;">Cost Share Requirements</span>',
+        str(docx_path),
+    )
+
+    with zipfile.ZipFile(docx_path) as package:
+        document_xml = package.read("word/document.xml").decode("utf-8")
+
+    assert "weekly-update-banner" not in document_xml
+    assert "&lt;span" not in document_xml
+    assert "Cost Share Requirements" in document_xml
+    assert 'w:val="C1121F"' in document_xml
+
+
+def test_pdf_export_uses_explicit_red_color_for_weekly_highlights(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "guide.pdf"
+
+    pipeline._md_to_pdf(
+        '<span style="color: #c1121f;">Changed deadline</span>',
+        str(pdf_path),
+    )
+
+    raw_pdf = pdf_path.read_bytes()
+    assert b"Changed deadline" in raw_pdf
+    assert b"0.7569 0.0706 0.1216 rg" in raw_pdf

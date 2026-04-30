@@ -185,6 +185,31 @@ def _weekly_highlight_spans_to_pdf_html(text: str) -> str:
     )
 
 
+def _is_html_comment_line(line: str) -> bool:
+    """Return True for generated markdown comment marker lines."""
+    stripped = line.strip()
+    return stripped.startswith("<!--") and stripped.endswith("-->")
+
+
+def _strip_markdown_links(text: str) -> str:
+    """Keep link labels while removing markdown URLs for plain renderers."""
+    return re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+
+
+def _plain_text_segments_from_weekly_spans(text: str) -> list[tuple[str, bool]]:
+    """Split text into plain segments and weekly-highlight flags."""
+    segments: list[tuple[str, bool]] = []
+    pos = 0
+    for match in _WEEKLY_HIGHLIGHT_SPAN_RE.finditer(text):
+        if match.start() > pos:
+            segments.append((_strip_markdown_links(text[pos : match.start()]), False))
+        segments.append((_strip_markdown_links(match.group(1)), True))
+        pos = match.end()
+    if pos < len(text):
+        segments.append((_strip_markdown_links(text[pos:]), False))
+    return [(segment, highlighted) for segment, highlighted in segments if segment]
+
+
 # ---------------------------------------------------------------------------
 # Markdown → .docx converter (basic)
 # ---------------------------------------------------------------------------
@@ -202,11 +227,15 @@ def _md_to_docx(md_text: str, path: str) -> None:
     i = 0
     while i < len(lines):
         line = lines[i]
+        if _is_html_comment_line(line):
+            i += 1
+            continue
 
         # --- headings ---
         m = re.match(r"^(#{1,6})\s+(.+)$", line)
         if m:
-            doc.add_heading(m.group(2).strip(), level=len(m.group(1)))
+            p = doc.add_heading("", level=len(m.group(1)))
+            _add_inline_formatting(p, m.group(2).strip())
             i += 1
             continue
 
@@ -430,6 +459,61 @@ def _ensure_blank_before_lists(md_text: str) -> str:
     return "\n".join(result)
 
 
+def _write_pdf_segments(pdf, text: str, *, font_size: int = 11, bold: bool = False) -> None:
+    """Write one logical line to PDF, switching to red for highlighted spans."""
+    pdf.set_font("Helvetica", "B" if bold else "", font_size)
+    segments = _plain_text_segments_from_weekly_spans(text)
+    if not segments:
+        pdf.ln(font_size + 3)
+        return
+    for segment, highlighted in segments:
+        if highlighted:
+            pdf.set_text_color(193, 18, 31)
+        else:
+            pdf.set_text_color(0, 0, 0)
+        cleaned = re.sub(r"\*\*\*(.+?)\*\*\*", r"\1", segment)
+        cleaned = re.sub(r"\*\*(.+?)\*\*", r"\1", cleaned)
+        cleaned = re.sub(r"\*(.+?)\*", r"\1", cleaned)
+        pdf.write(font_size + 3, cleaned)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(font_size + 5)
+
+
+def _md_to_pdf_with_highlights(md_text: str, path: str) -> None:
+    """Render markdown with explicit red weekly-update highlights."""
+    pdf = _FPDF(orientation="P", unit="pt", format="Letter")
+    pdf.set_compression(False)
+    pdf.set_margins(left=72, top=72, right=72)
+    pdf.set_auto_page_break(auto=True, margin=72)
+    pdf.add_page()
+
+    for line in _sanitize_for_pdf(md_text).splitlines():
+        if _is_html_comment_line(line):
+            continue
+        if not line.strip():
+            pdf.ln(6)
+            continue
+
+        heading = re.match(r"^(#{1,6})\s+(.+)$", line)
+        if heading:
+            level = len(heading.group(1))
+            font_size = max(12, 20 - (level * 2))
+            _write_pdf_segments(pdf, heading.group(2).strip(), font_size=font_size, bold=True)
+            continue
+
+        bullet = re.match(r"^(\s*)([-*+]|\d+\.)\s+(.+)$", line)
+        if bullet:
+            marker = bullet.group(2)
+            content = bullet.group(3)
+            prefix = f"{marker} " if marker.endswith(".") else "* "
+            _write_pdf_segments(pdf, prefix + content, font_size=11)
+            continue
+
+        _write_pdf_segments(pdf, line, font_size=11)
+
+    pdf.output(path)
+
+
 def _md_to_pdf(md_text: str, path: str) -> None:
     """Convert markdown to a styled PDF using fpdf2 (pure Python, zero system dependencies).
 
@@ -441,6 +525,10 @@ def _md_to_pdf(md_text: str, path: str) -> None:
             "PDF export requires 'markdown' and 'fpdf2'. "
             "Run: pip3 install markdown fpdf2"
         )
+
+    if _WEEKLY_HIGHLIGHT_SPAN_RE.search(md_text):
+        _md_to_pdf_with_highlights(md_text, path)
+        return
 
     # Sanitize Unicode before converting so fpdf2's Latin-1 fonts don't choke.
     safe_md = _sanitize_for_pdf(md_text)
