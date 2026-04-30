@@ -63,6 +63,11 @@ except Exception:
     _PDF_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+WEEKLY_HIGHLIGHT_COLOR = "C1121F"
+_WEEKLY_HIGHLIGHT_SPAN_RE = re.compile(
+    r"<span\s+style=[\"']color:\s*#?c1121f;?[\"']>(.*?)</span>",
+    flags=re.IGNORECASE | re.DOTALL,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +175,14 @@ def _artifact_timestamp() -> str:
 def _timestamped_output_path(output_dir: str, stem: str, suffix: str, timestamp: str) -> str:
     """Build a timestamped output artifact path."""
     return os.path.join(output_dir, f"{stem}_{timestamp}{suffix}")
+
+
+def _weekly_highlight_spans_to_pdf_html(text: str) -> str:
+    """Convert weekly highlight spans to HTML tags understood by fpdf2."""
+    return _WEEKLY_HIGHLIGHT_SPAN_RE.sub(
+        r'<font color="#c1121f">\1</font>',
+        text,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -304,15 +317,11 @@ def _add_emphasis_runs(paragraph, text: str, color_hex: Optional[str] = None) ->
 
 def _add_inline_formatting(paragraph, text: str, color_hex: Optional[str] = None) -> None:
     """Parse links, emphasis, and weekly-update red spans."""
-    span_pat = re.compile(
-        r'<span style="color:\s*#?c1121f;">(.*?)</span>',
-        flags=re.IGNORECASE,
-    )
     pos = 0
-    for m in span_pat.finditer(text):
+    for m in _WEEKLY_HIGHLIGHT_SPAN_RE.finditer(text):
         if m.start() > pos:
             _add_inline_formatting(paragraph, text[pos : m.start()], color_hex=color_hex)
-        _add_inline_formatting(paragraph, m.group(1), color_hex="C1121F")
+        _add_inline_formatting(paragraph, m.group(1), color_hex=WEEKLY_HIGHLIGHT_COLOR)
         pos = m.end()
     if pos:
         if pos < len(text):
@@ -435,6 +444,7 @@ def _md_to_pdf(md_text: str, path: str) -> None:
 
     # Sanitize Unicode before converting so fpdf2's Latin-1 fonts don't choke.
     safe_md = _sanitize_for_pdf(md_text)
+    safe_md = _weekly_highlight_spans_to_pdf_html(safe_md)
 
     # The Python markdown library requires a blank line before the first list
     # item; without it, bullets are swallowed into the preceding <p> tag.
