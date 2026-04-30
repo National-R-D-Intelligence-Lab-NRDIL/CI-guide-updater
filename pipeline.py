@@ -580,13 +580,19 @@ def run_pipeline(
             enforce_sensitive_data_policy(
                 diff,
                 context=f"pipeline update source '{name}'",
+                allow_public_contextual_findings=True,
             )
             diff_blocks.append(f"{header}\n\n{diff}")
         combined_diff = "\n\n".join(diff_blocks)
 
         try:
             assert_public_sources(sources, context="pipeline update step")
-            updated_md = updater.update_guide(guide_md, combined_diff, model_name)
+            updated_md = updater.update_guide(
+                guide_md,
+                combined_diff,
+                model_name,
+                allow_public_contextual_findings=True,
+            )
             did_llm_update = True
         except EnvironmentError as exc:
             logger.error("step=3 action=llm_update status=error type=config error=%s", exc)

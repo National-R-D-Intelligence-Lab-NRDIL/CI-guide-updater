@@ -274,6 +274,8 @@ Before guide generation, weekly updates, section classification, or citation map
 
 Public policy language alone, such as sponsor guidance mentioning `FERPA`, `HIPAA`, `CUI`, `ITAR`, `confidential`, or `internal use only`, does not trigger the private-data block.
 
+For approved public sponsor sources, contact-heavy pages and public policy references to terms like `PII` are treated as warnings instead of hard blocks. Direct identifiers such as SSNs, student IDs, or credit card-like numbers still block the LLM handoff.
+
 If a risky pattern is found, the UI and CLI use this message:
 
 ```text

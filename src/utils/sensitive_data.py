@@ -16,6 +16,7 @@ SENSITIVE_DATA_MESSAGE = (
 VALID_POLICIES = {"block", "warn", "off"}
 
 logger = logging.getLogger(__name__)
+CONTEXTUAL_PUBLIC_FINDING_KINDS = {"email_heavy", "sensitive_keyword"}
 
 _SSN_RE = re.compile(
     r"(?<!\d)(?:\d{3}[-\s]\d{2}[-\s]\d{4}|(?:ssn|social security number)\s*[:#-]?\s*\d{9})(?!\d)",
@@ -190,6 +191,7 @@ def enforce_sensitive_data_policy(
     *,
     context: str,
     policy: str | None = None,
+    allow_public_contextual_findings: bool = False,
 ) -> list[SensitiveDataFinding]:
     """Scan text and either block or warn according to configuration."""
     active_policy = (policy or get_sensitive_data_policy()).strip().lower()
@@ -203,7 +205,16 @@ def enforce_sensitive_data_policy(
         return []
 
     summary = format_sensitive_data_summary(findings)
-    if active_policy == "block":
+    contextual_only = all(
+        finding.kind in CONTEXTUAL_PUBLIC_FINDING_KINDS
+        for finding in findings
+    )
+    should_warn_for_public_context = (
+        active_policy == "block"
+        and allow_public_contextual_findings
+        and contextual_only
+    )
+    if active_policy == "block" and not should_warn_for_public_context:
         raise SensitiveDataError(context, findings)
 
     logger.warning(

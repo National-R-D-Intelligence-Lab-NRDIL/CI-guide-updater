@@ -92,6 +92,7 @@ def update_guide(
     current_guide_md: str,
     diff_text: str,
     model_name: Optional[str] = None,
+    allow_public_contextual_findings: bool = False,
 ) -> str:
     """Send the guide and diff to an LLM and return the rewritten guide.
 
@@ -122,6 +123,7 @@ def update_guide(
     enforce_sensitive_data_policy(
         f"{current_guide_md}\n\n{diff_text}",
         context="guide update prompt",
+        allow_public_contextual_findings=allow_public_contextual_findings,
     )
     user_prompt = _build_user_prompt(current_guide_md, diff_text)
 
@@ -169,6 +171,7 @@ def classify_sections(
     enforce_sensitive_data_policy(
         f"{guide_md}\n\n{snippet}",
         context="section classification prompt",
+        allow_public_contextual_findings=True,
     )
 
     try:

@@ -262,12 +262,14 @@ def add_citations(
         enforce_sensitive_data_policy(
             excerpt,
             context=f"citation generation source '{name}'",
+            allow_public_contextual_findings=True,
         )
 
     prompt = _build_prompt(claims, source_names, source_excerpts)
     enforce_sensitive_data_policy(
         prompt,
         context="citation generation prompt",
+        allow_public_contextual_findings=True,
     )
     response = client.chat.completions.create(
         model=model_name,

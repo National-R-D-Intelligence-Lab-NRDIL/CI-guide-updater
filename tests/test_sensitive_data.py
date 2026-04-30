@@ -61,3 +61,30 @@ def test_enforce_warns_by_policy(caplog) -> None:
 
     assert findings
     assert "Sensitive data warning before LLM handoff" in caplog.text
+
+
+def test_public_contextual_findings_warn_instead_of_blocking(caplog) -> None:
+    text = "\n".join(
+        [f"contact{i}@example.com" for i in range(6)]
+        + ["Guidance mentions personally identifiable information for applicants."]
+    )
+
+    findings = sensitive_data.enforce_sensitive_data_policy(
+        text,
+        context="pipeline update source public test",
+        policy="block",
+        allow_public_contextual_findings=True,
+    )
+
+    assert {finding.kind for finding in findings} == {"email_heavy", "sensitive_keyword"}
+    assert "Sensitive data warning before LLM handoff" in caplog.text
+
+
+def test_public_contextual_findings_do_not_downgrade_direct_identifiers() -> None:
+    with pytest.raises(sensitive_data.SensitiveDataError):
+        sensitive_data.enforce_sensitive_data_policy(
+            "Contact office@example.com. SSN 123-45-6789.",
+            context="pipeline update source public test",
+            policy="block",
+            allow_public_contextual_findings=True,
+        )

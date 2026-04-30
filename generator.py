@@ -167,6 +167,7 @@ def generate_guide(
         enforce_sensitive_data_policy(
             trimmed,
             context=f"guide generation source '{name}' ({source_ref})",
+            allow_public_contextual_findings=True,
         )
         source_texts.append(
             f"### Source: {name}\n"
@@ -184,6 +185,7 @@ def generate_guide(
     enforce_sensitive_data_policy(
         combined,
         context="guide generation combined source text",
+        allow_public_contextual_findings=True,
     )
 
     user_prompt = (
