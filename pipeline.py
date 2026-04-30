@@ -658,7 +658,7 @@ def run_pipeline(
         logger.info("result=up_to_date reason=no_source_changes")
         return False
 
-    updated_md = guide_md_raw if refresh_citations else guide_md
+    updated_md = guide_md
     did_llm_update = False
     combined_diff = ""
     changed_source_names: list[str] = []
@@ -705,7 +705,6 @@ def run_pipeline(
         updated_md = weekly_update.decorate_weekly_update(
             previous_md=guide_md,
             updated_md=updated_md,
-            combined_diff=combined_diff,
             changed_sources=changed_source_names,
         )
         logger.info("step=3 action=weekly_update_markup status=done")

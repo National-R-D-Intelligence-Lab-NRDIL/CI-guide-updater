@@ -112,26 +112,46 @@ def highlight_changed_main_text(previous_md: str, updated_md: str) -> str:
     return "\n".join(decorated)
 
 
-def _extract_diff_bullets(combined_diff: str, limit: int = 6) -> list[str]:
-    """Pull concise added/removed items from the structured source diff."""
-    additions: list[str] = []
-    removals: list[str] = []
-    for raw_line in combined_diff.splitlines():
-        line = raw_line.strip()
-        if line.startswith("+ "):
-            item = line[2:].strip()
-            if item:
-                additions.append(item)
-        elif line.startswith("- "):
-            item = line[2:].strip()
-            if item:
-                removals.append(f"Removed: {item}")
+def _plain_summary_text(line: str) -> str:
+    """Return a compact human-readable summary for one markdown line."""
+    text = strip_weekly_update_markup(line)
+    text = re.sub(r"^\s{0,3}#{1,6}\s+", "", text)
+    text = re.sub(r"^\s*(?:[-*+]|\d+\.)\s+", "", text)
+    text = text.strip().strip("|").strip()
+    if re.fullmatch(r":?-{3,}:?", text.replace("|", "").strip()):
+        return ""
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = re.sub(r"\*\*\*(.+?)\*\*\*", r"\1", text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.+?)\*", r"\1", text)
+    return re.sub(r"\s+", " ", text).strip()
 
-    items = additions + removals
+
+def summarize_guide_changes(previous_md: str, updated_md: str, limit: int = 6) -> list[str]:
+    """Return concise bullets from actual guide text changes, not source-page noise."""
+    previous_clean = strip_weekly_update_markup(previous_md)
+    updated_clean = strip_weekly_update_markup(updated_md)
+    old_lines = previous_clean.splitlines()
+    new_lines = updated_clean.splitlines()
+    matcher = difflib.SequenceMatcher(a=old_lines, b=new_lines, autojunk=False)
+
+    items: list[str] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag in {"replace", "insert"}:
+            items.extend(
+                _plain_summary_text(line)
+                for line in new_lines[j1:j2]
+            )
+        elif tag == "delete":
+            items.extend(
+                f"Removed: {_plain_summary_text(line)}"
+                for line in old_lines[i1:i2]
+            )
+
     compact: list[str] = []
     seen: set[str] = set()
     for item in items:
-        normalized = re.sub(r"\s+", " ", item).strip()
+        normalized = item.strip()
         if not normalized or normalized.lower() in seen:
             continue
         seen.add(normalized.lower())
@@ -143,19 +163,27 @@ def _extract_diff_bullets(combined_diff: str, limit: int = 6) -> list[str]:
     return compact
 
 
+def _source_label(source_name: str) -> str:
+    """Make source identifiers more readable in the banner."""
+    label = str(source_name or "").strip()
+    label = re.sub(r"^[a-z0-9]+(?:_[a-z0-9]+){0,8}_", "", label)
+    label = label.replace("_", " ")
+    label = re.sub(r"\s+", " ", label).strip()
+    return label.title() if label else "Approved Source"
+
+
 def build_update_banner(
-    combined_diff: str,
+    guide_change_bullets: list[str],
     changed_sources: list[str],
     *,
     run_date: date | None = None,
 ) -> str:
     """Build a top-of-document banner summarizing weekly update changes."""
     run_date = run_date or date.today()
-    bullets = _extract_diff_bullets(combined_diff)
-    if not bullets:
-        bullets = ["Source content changed; see highlighted guide text and audit evidence for details."]
+    bullets = [item for item in guide_change_bullets if item.strip()]
 
-    source_text = ", ".join(changed_sources[:5]) if changed_sources else "approved sources"
+    source_labels = [_source_label(source) for source in changed_sources[:5]]
+    source_text = ", ".join(source_labels) if source_labels else "approved sources"
     if len(changed_sources) > 5:
         source_text += f", and {len(changed_sources) - 5} more"
 
@@ -183,10 +211,13 @@ def build_update_banner(
 def decorate_weekly_update(
     previous_md: str,
     updated_md: str,
-    combined_diff: str,
     changed_sources: list[str],
 ) -> str:
     """Add the weekly update banner and red changed-text highlights."""
+    guide_change_bullets = summarize_guide_changes(previous_md, updated_md)
+    if not guide_change_bullets:
+        return strip_weekly_update_markup(updated_md)
+
     highlighted = highlight_changed_main_text(previous_md, updated_md)
-    banner = build_update_banner(combined_diff, changed_sources)
+    banner = build_update_banner(guide_change_bullets, changed_sources)
     return f"{banner}\n\n{highlighted}"
