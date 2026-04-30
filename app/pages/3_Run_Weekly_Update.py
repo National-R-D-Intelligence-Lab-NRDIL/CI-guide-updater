@@ -13,8 +13,10 @@ import streamlit as st
 
 from app.components.shell import apply_app_chrome, render_page_header, render_sidebar
 from app.components.forms import select_program_form
+from app.components.preview import markdown_preview
 from app.components.status import render_storage_status
 from app.state.session import init_session_state
+from src.services.output_service import load_outputs
 from src.services.pipeline_service import run_weekly_update
 from src.services.review_service import get_program_display_name, list_program_slugs
 
@@ -29,6 +31,7 @@ render_page_header(
     step_label="Step 4",
 )
 st.info("Weekly Update requires a baseline `guide.md`. Generate the first draft and promote it in **Review & Generate** before running updates here.")
+st.caption("When source changes are found, the updated guide gets a top update banner and red highlights on changed main-text lines.")
 
 st.markdown("### Choose the program to update")
 st.caption("Select a program that already has a promoted baseline guide.")
@@ -125,6 +128,10 @@ if run_clicked:
         st.subheader("Artifacts")
         for artifact in result["artifacts"]:
             st.code(artifact)
+
+    outputs = load_outputs(selected_slug)
+    if outputs.get("ok") and outputs.get("markdown_content"):
+        markdown_preview(outputs["markdown_content"], title="Updated Guide Preview")
 
     render_storage_status(result.get("storage"))
     with st.expander("Execution logs", expanded=False):

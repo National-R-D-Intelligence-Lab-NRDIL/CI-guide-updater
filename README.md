@@ -10,7 +10,7 @@ It is designed for non-developers to use in day-to-day work, while still staying
 2. Helps reviewers approve, reject, or add links.
 3. Generates a first draft with citations and produces output files immediately.
 4. Exports `.md`, `.docx`, and `.pdf` files ready for download.
-5. Runs weekly updates to detect website changes and refresh the guide over time.
+5. Runs weekly updates to detect website changes, add a top update banner, highlight changed guide text in red, and refresh the guide over time.
 6. Optionally runs an Alternative Funding Intelligence Monitor for foundation, corporate, international, and pharma partnership opportunities.
 
 ## Workflow
@@ -22,7 +22,7 @@ One-time setup per program
   3. View Outputs      → preview and download .md / .docx / .pdf right away
 
 Ongoing maintenance
-  4. Weekly Update     → re-scrape sources, diff, update guide, refresh outputs
+  4. Weekly Update     → re-scrape sources, diff, update guide, add update banner/red highlights, refresh outputs
   5. Audit Evidence    → trace citations and diffs back to source pages
 ```
 
@@ -77,7 +77,7 @@ Available pages:
 | 1 | Create New Program | Discover candidate source pages for a new grant program or funding topic |
 | 2 | Review & Generate | Approve sources, generate the first draft with citations, and get output files |
 | 3 | View Outputs | Preview the guide and download `.md` / `.docx` / `.pdf` immediately |
-| 4 | Weekly Update | Refresh an existing guide when sponsor pages change (optional until needed) |
+| 4 | Weekly Update | Refresh an existing guide when sponsor pages change, with an update banner and red changed-text highlights |
 | 5 | Audit Evidence | Trace diffs, citations, and evidence back to source pages |
 
 After Step 2, output files are ready. You do not need to run Weekly Update before viewing results.
@@ -226,7 +226,9 @@ What happens during a run:
 2. The new content is compared with the last snapshot.
 3. If anything changed, the diff is sent to Gemini.
 4. Gemini rewrites only the affected sections.
-5. Updated artifacts are written to `programs/<slug>/output/`.
+5. A **Weekly Update** banner is added to the top of the guide with the most important detected changes.
+6. Main-text lines changed by the update are highlighted in red in the markdown preview and generated outputs.
+7. Updated artifacts are written to `programs/<slug>/output/`.
 
 The pipeline can also write an evidence file at `programs/<slug>/output/sponsor_guide_evidence.json`.
 
@@ -428,6 +430,8 @@ Common artifacts include:
 - `sponsor_guide_updated.docx`
 - `sponsor_guide_updated.pdf`
 - `sponsor_guide_evidence.json` (citation evidence, only when citations are enabled)
+
+After a weekly update with detected source changes, the updated guide includes a top **Weekly Update** section summarizing important changes and red highlights on changed main-text lines. Deletions are summarized in the banner because removed text no longer appears in the document body.
 
 The Streamlit Outputs page reads from this directory and lets you preview or download the available files. If no output directory exists yet, it falls back to showing the draft or baseline guide.
 

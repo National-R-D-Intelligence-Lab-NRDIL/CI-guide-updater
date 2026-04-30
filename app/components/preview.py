@@ -11,7 +11,7 @@ import streamlit as st
 def markdown_preview(content: str, title: str = "Markdown Preview") -> None:
     """Render markdown preview in an expander."""
     with st.expander(title, expanded=True):
-        st.markdown(content)
+        st.markdown(content, unsafe_allow_html=True)
 
 
 def json_preview(data: Any, title: str = "JSON Preview") -> None:

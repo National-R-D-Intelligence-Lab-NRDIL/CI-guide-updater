@@ -30,6 +30,11 @@ def _clean_model_json(raw: str) -> str:
     return out
 
 
+def _strip_html_tags(text: str) -> str:
+    """Remove lightweight HTML markup before citation claim matching."""
+    return re.sub(r"<[^>]+>", "", text)
+
+
 def _extract_claim_lines(guide_md: str) -> list[tuple[int, str]]:
     """Return candidate lines that should receive citations.
 
@@ -37,9 +42,18 @@ def _extract_claim_lines(guide_md: str) -> list[tuple[int, str]]:
     """
     claims: list[tuple[int, str]] = []
     section_title = ""
+    in_weekly_banner = False
     lines = guide_md.splitlines()
     for idx, line in enumerate(lines):
         stripped = line.strip()
+        if stripped == "<!-- weekly-update-banner:start -->":
+            in_weekly_banner = True
+            continue
+        if stripped == "<!-- weekly-update-banner:end -->":
+            in_weekly_banner = False
+            continue
+        if in_weekly_banner:
+            continue
         if not stripped:
             continue
         m = re.match(r"^#{1,6}\s+(.+)$", stripped)
@@ -59,6 +73,7 @@ def _extract_claim_lines(guide_md: str) -> list[tuple[int, str]]:
 
         claim = re.sub(r"^[-*]\s+", "", stripped)
         claim = re.sub(r"\[?\[(?:\^?[A-Za-z0-9_-]+|\d+)\]\]?(?:\([^)]+\))?", "", claim).strip()
+        claim = _strip_html_tags(claim).strip()
         if len(claim) < 35:
             continue
         claims.append((idx, claim))

@@ -56,7 +56,9 @@ def run_weekly_update(
 
         ok, logs = capture_logs(_run)
 
-        changed_sources = re.findall(r"✓\s+(.+?): changes detected", logs)
+        changed_sources = re.findall(r"step=2 source=(.+?) status=changed", logs)
+        if not changed_sources:
+            changed_sources = re.findall(r"✓\s+(.+?): changes detected", logs)
         auto_section_lines = re.findall(r"auto-detected sections → (.+)", logs)
         changed_sections = 0
         for item in auto_section_lines:

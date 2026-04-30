@@ -40,13 +40,14 @@ from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Pt
+from docx.shared import Pt, RGBColor
 from dotenv import load_dotenv
 
 import cite
 import differ
 import scraper
 import updater
+import weekly_update
 from src.utils.llm_client import get_default_model
 from src.utils.logging_utils import configure_rotating_file_logging
 from src.utils.sensitive_data import SensitiveDataError, enforce_sensitive_data_policy
@@ -235,7 +236,7 @@ def _md_to_docx(md_text: str, path: str) -> None:
     doc.save(path)
 
 
-def _add_hyperlink(paragraph, text: str, url: str) -> None:
+def _add_hyperlink(paragraph, text: str, url: str, color_hex: str = "0000FF") -> None:
     """Add a clickable hyperlink run to a paragraph."""
     part = paragraph.part
     r_id = part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
@@ -247,7 +248,7 @@ def _add_hyperlink(paragraph, text: str, url: str) -> None:
     u = OxmlElement("w:u")
     u.set(qn("w:val"), "single")
     color = OxmlElement("w:color")
-    color.set(qn("w:val"), "0000FF")
+    color.set(qn("w:val"), color_hex)
     r_pr.append(u)
     r_pr.append(color)
     new_run.append(r_pr)
@@ -258,40 +259,64 @@ def _add_hyperlink(paragraph, text: str, url: str) -> None:
     paragraph._p.append(hyperlink)
 
 
-def _add_emphasis_runs(paragraph, text: str) -> None:
+def _add_emphasis_runs(paragraph, text: str, color_hex: str | None = None) -> None:
     """Parse **bold** and *italic* in plain text segments."""
+    def _style_run(run) -> None:
+        if color_hex:
+            run.font.color.rgb = RGBColor.from_string(color_hex)
+
     pattern = re.compile(r"(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*)")
     pos = 0
     for m in pattern.finditer(text):
         if m.start() > pos:
-            paragraph.add_run(text[pos : m.start()])
+            run = paragraph.add_run(text[pos : m.start()])
+            _style_run(run)
         if m.group(2):
             run = paragraph.add_run(m.group(2))
             run.bold = True
             run.italic = True
+            _style_run(run)
         elif m.group(3):
             run = paragraph.add_run(m.group(3))
             run.bold = True
+            _style_run(run)
         elif m.group(4):
             run = paragraph.add_run(m.group(4))
             run.italic = True
+            _style_run(run)
         pos = m.end()
     if pos < len(text):
-        paragraph.add_run(text[pos:])
+        run = paragraph.add_run(text[pos:])
+        _style_run(run)
 
 
-def _add_inline_formatting(paragraph, text: str) -> None:
-    """Parse links + emphasis and add styled runs."""
+def _add_inline_formatting(paragraph, text: str, color_hex: str | None = None) -> None:
+    """Parse links, emphasis, and weekly-update red spans."""
+    span_pat = re.compile(
+        r'<span style="color:\s*#?c1121f;">(.*?)</span>',
+        flags=re.IGNORECASE,
+    )
+    pos = 0
+    for m in span_pat.finditer(text):
+        if m.start() > pos:
+            _add_inline_formatting(paragraph, text[pos : m.start()], color_hex=color_hex)
+        _add_inline_formatting(paragraph, m.group(1), color_hex="C1121F")
+        pos = m.end()
+    if pos:
+        if pos < len(text):
+            _add_inline_formatting(paragraph, text[pos:], color_hex=color_hex)
+        return
+
     # Handles both [text](url) and [[1]](url) style citation links.
     link_pat = re.compile(r"\[([^\]]*(?:\[[^\]]*\])?[^\]]*)\]\((https?://[^)\s]+)\)")
     pos = 0
     for m in link_pat.finditer(text):
         if m.start() > pos:
-            _add_emphasis_runs(paragraph, text[pos : m.start()])
-        _add_hyperlink(paragraph, m.group(1), m.group(2))
+            _add_emphasis_runs(paragraph, text[pos : m.start()], color_hex=color_hex)
+        _add_hyperlink(paragraph, m.group(1), m.group(2), color_hex=color_hex or "0000FF")
         pos = m.end()
     if pos < len(text):
-        _add_emphasis_runs(paragraph, text[pos:])
+        _add_emphasis_runs(paragraph, text[pos:], color_hex=color_hex)
 
 
 # ---------------------------------------------------------------------------
@@ -524,12 +549,15 @@ def run_pipeline(
 
     updated_md = guide_md
     did_llm_update = False
+    combined_diff = ""
+    changed_source_names: list[str] = []
     if all_diffs:
         # -- 3. Update via LLM ------------------------------------------------
         logger.info("step=3 action=llm_update status=start diffs=%d model=%s", len(all_diffs), model_name)
 
         diff_blocks: list[str] = []
         for name, sections, diff in all_diffs:
+            changed_source_names.append(name)
             header = f"## Source: {name}"
             if sections:
                 header += (
@@ -555,6 +583,15 @@ def run_pipeline(
             return False
     else:
         logger.info("step=3 action=llm_update status=skipped reason=no_diffs")
+
+    if did_llm_update:
+        updated_md = weekly_update.decorate_weekly_update(
+            previous_md=guide_md,
+            updated_md=updated_md,
+            combined_diff=combined_diff,
+            changed_sources=changed_source_names,
+        )
+        logger.info("step=3 action=weekly_update_markup status=done")
 
     # -- 4. Optional citation pass --------------------------------------------
     evidence: list[dict] = []
