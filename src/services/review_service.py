@@ -152,6 +152,49 @@ def _make_manual_name(slug: str, title: str, url: str) -> str:
     return f"{slug}_manual_{safe}".lower()
 
 
+def _unique_source_name(base_name: str, existing_names: set[str]) -> str:
+    """Return a source name that does not collide with existing entries."""
+    name = base_name
+    suffix = 2
+    while name in existing_names:
+        name = f"{base_name}_{suffix}"
+        suffix += 1
+    return name
+
+
+def _sources_path(slug: str) -> Path:
+    return _program_dir(slug) / "sources.json"
+
+
+def _load_sources_json(slug: str) -> list[dict[str, Any]]:
+    """Load the approved sources list for a program."""
+    sources_path = _sources_path(slug)
+    if not sources_path.exists():
+        raise UserFacingError("Approved sources not found for selected program.")
+    data = json.loads(sources_path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise UserFacingError("Approved sources file is invalid.", "sources.json must contain a JSON array.")
+    return [src for src in data if isinstance(src, dict)]
+
+
+def _write_sources_json(slug: str, sources: list[dict[str, Any]]) -> dict[str, Any]:
+    """Write and persist the approved sources list."""
+    sources_path = _sources_path(slug)
+    sources_path.parent.mkdir(parents=True, exist_ok=True)
+    sources_path.write_text(json.dumps(sources, indent=2), encoding="utf-8")
+    storage = persist_paths(slug, ["sources.json"])
+    return {"path": str(sources_path), "storage": storage}
+
+
+def _clean_sections(sections_text: str | list[Any]) -> list[str]:
+    """Normalize comma/newline-separated section labels."""
+    if isinstance(sections_text, list):
+        raw_items = [str(item) for item in sections_text]
+    else:
+        raw_items = re.split(r"[,\n]", str(sections_text or ""))
+    return [item.strip() for item in raw_items if item.strip()]
+
+
 def clean_optional_text(value: Any) -> str | None:
     """Normalize optional text fields and common missing-value markers."""
     if value is None:
@@ -370,6 +413,196 @@ def add_manual_pdf_source(
         return {"ok": False, "error": exc.message, "detail": exc.detail}
     except Exception as exc:  # pragma: no cover
         return {"ok": False, "error": "Failed to add PDF source.", "detail": format_exception(exc)}
+
+
+def load_approved_sources(slug: str) -> dict[str, Any]:
+    """Return the current sources.json list for update-time editing."""
+    try:
+        hydrate_program(slug)
+        sources = _load_sources_json(slug)
+        return {
+            "ok": True,
+            "sources": sources,
+            "path": str(_sources_path(slug)),
+            "count": len(sources),
+        }
+    except UserFacingError as exc:
+        return {"ok": False, "error": exc.message, "detail": exc.detail}
+    except Exception as exc:  # pragma: no cover
+        return {"ok": False, "error": "Failed to load approved sources.", "detail": format_exception(exc)}
+
+
+def add_approved_url_source(
+    slug: str,
+    url: str,
+    title: str = "",
+    sections_text: str = "",
+) -> dict[str, Any]:
+    """Add a public URL directly to sources.json for future updates."""
+    try:
+        hydrate_program(slug)
+        clean_url = str(url or "").strip()
+        if not clean_url:
+            raise UserFacingError("URL is required.")
+        try:
+            clean_url = normalize_and_validate_public_url(clean_url, context="weekly update source")
+        except ValueError as exc:
+            raise UserFacingError("Invalid or untrusted URL.", str(exc)) from exc
+
+        sources = _load_sources_json(slug)
+        if any(str(src.get("url", "")).strip() == clean_url for src in sources):
+            raise UserFacingError("That URL is already in the approved source list.")
+
+        name = _unique_source_name(
+            _make_manual_name(slug, title, clean_url),
+            {str(src.get("name", "")) for src in sources},
+        )
+        entry = {
+            "name": name,
+            "url": clean_url,
+            "file_path": "",
+            "sections": _clean_sections(sections_text),
+            "title": title.strip(),
+            "data_class": "public",
+            "source_origin": "weekly_update_manual",
+            "created_at": _utc_now(),
+        }
+        sources.append(entry)
+        written = _write_sources_json(slug, sources)
+        return {"ok": True, "entry": entry, "count": len(sources), **written}
+    except UserFacingError as exc:
+        return {"ok": False, "error": exc.message, "detail": exc.detail}
+    except Exception as exc:  # pragma: no cover
+        return {"ok": False, "error": "Failed to add source.", "detail": format_exception(exc)}
+
+
+def add_approved_pdf_source(
+    slug: str,
+    file_name: str,
+    file_bytes: bytes,
+    title: str = "",
+    sections_text: str = "",
+) -> dict[str, Any]:
+    """Add a public uploaded PDF directly to sources.json for future updates."""
+    try:
+        hydrate_program(slug)
+        clean_name = str(file_name or "").strip()
+        if not clean_name:
+            raise UserFacingError("A PDF filename is required.")
+        if not clean_name.lower().endswith(".pdf"):
+            raise UserFacingError("Only PDF files are supported for upload.")
+        if not file_bytes:
+            raise UserFacingError("Uploaded file is empty.")
+
+        try:
+            pdf_module = __import__("pypdf")
+            PdfReader = pdf_module.PdfReader
+            PdfReader(BytesIO(file_bytes))
+        except Exception as exc:
+            raise UserFacingError("Uploaded file is not a readable PDF.", str(exc)) from exc
+
+        sources = _load_sources_json(slug)
+        review_dir = _review_dir(slug)
+        uploads_dir = review_dir / "uploads"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+        safe_file_name = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in clean_name)
+        target_path = uploads_dir / safe_file_name
+        suffix = 2
+        while target_path.exists():
+            stem = Path(safe_file_name).stem or "source"
+            ext = Path(safe_file_name).suffix or ".pdf"
+            target_path = uploads_dir / f"{stem}_{suffix}{ext}"
+            suffix += 1
+        target_path.write_bytes(file_bytes)
+
+        name_seed = title.strip() or target_path.name
+        name = _unique_source_name(
+            _make_manual_name(slug, name_seed, str(target_path)),
+            {str(src.get("name", "")) for src in sources},
+        )
+        entry = {
+            "name": name,
+            "url": "",
+            "file_path": str(target_path),
+            "sections": _clean_sections(sections_text),
+            "title": title.strip() or target_path.name,
+            "data_class": "public",
+            "source_origin": "weekly_update_upload",
+            "created_at": _utc_now(),
+        }
+        sources.append(entry)
+        written = _write_sources_json(slug, sources)
+        storage = persist_paths(slug, ["sources.json", f"review/uploads/{target_path.name}"])
+        return {
+            "ok": True,
+            "entry": entry,
+            "count": len(sources),
+            "path": written["path"],
+            "storage": storage,
+        }
+    except UserFacingError as exc:
+        return {"ok": False, "error": exc.message, "detail": exc.detail}
+    except Exception as exc:  # pragma: no cover
+        return {"ok": False, "error": "Failed to add PDF source.", "detail": format_exception(exc)}
+
+
+def update_approved_source(
+    slug: str,
+    source_name: str,
+    *,
+    title: str = "",
+    url: str = "",
+    sections_text: str = "",
+) -> dict[str, Any]:
+    """Edit title, URL, and section mapping for one approved source."""
+    try:
+        hydrate_program(slug)
+        sources = _load_sources_json(slug)
+        target = next((src for src in sources if str(src.get("name", "")) == source_name), None)
+        if target is None:
+            raise UserFacingError("Selected source was not found.")
+
+        clean_url = str(url or "").strip()
+        if clean_url:
+            try:
+                clean_url = normalize_and_validate_public_url(clean_url, context="weekly update source")
+            except ValueError as exc:
+                raise UserFacingError("Invalid or untrusted URL.", str(exc)) from exc
+            for src in sources:
+                if src is not target and str(src.get("url", "")).strip() == clean_url:
+                    raise UserFacingError("Another source already uses that URL.")
+            target["url"] = clean_url
+            target["file_path"] = ""
+        elif not str(target.get("file_path", "")).strip():
+            raise UserFacingError("URL is required for web sources.")
+
+        target["title"] = title.strip()
+        target["sections"] = _clean_sections(sections_text)
+        target["data_class"] = "public"
+        written = _write_sources_json(slug, sources)
+        return {"ok": True, "entry": target, "count": len(sources), **written}
+    except UserFacingError as exc:
+        return {"ok": False, "error": exc.message, "detail": exc.detail}
+    except Exception as exc:  # pragma: no cover
+        return {"ok": False, "error": "Failed to update source.", "detail": format_exception(exc)}
+
+
+def remove_approved_source(slug: str, source_name: str) -> dict[str, Any]:
+    """Remove one source from sources.json."""
+    try:
+        hydrate_program(slug)
+        sources = _load_sources_json(slug)
+        kept = [src for src in sources if str(src.get("name", "")) != source_name]
+        if len(kept) == len(sources):
+            raise UserFacingError("Selected source was not found.")
+        if not kept:
+            raise UserFacingError("Cannot remove the last source.", "At least one approved source is required.")
+        written = _write_sources_json(slug, kept)
+        return {"ok": True, "removed": source_name, "count": len(kept), **written}
+    except UserFacingError as exc:
+        return {"ok": False, "error": exc.message, "detail": exc.detail}
+    except Exception as exc:  # pragma: no cover
+        return {"ok": False, "error": "Failed to remove source.", "detail": format_exception(exc)}
 
 
 def load_review_context(slug: str) -> dict[str, Any]:

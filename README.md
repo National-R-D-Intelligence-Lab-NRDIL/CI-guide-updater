@@ -225,6 +225,15 @@ python3 pipeline.py programs/nsf_career/output/sponsor_guide_updated.md \
 
 For the first weekly run after baseline promotion, you can use `programs/<slug>/guide.md` if no `output/sponsor_guide_updated.md` exists yet. In the Streamlit UI, Weekly Update picks the latest generated guide automatically and falls back to `guide.md` only for that first run.
 
+In the Streamlit UI, the **Weekly Update** page also includes a **Sources for this update** panel. Use it before running the update when you need to:
+
+- add a newly discovered public URL source
+- upload a public PDF source
+- edit a source title, URL, or section mapping
+- remove a source that should no longer be monitored
+
+Those changes update `programs/<slug>/sources.json` directly, so the next weekly run uses the revised source list without going back through first-draft generation.
+
 What happens during a run:
 
 1. Every source URL is scraped again.
