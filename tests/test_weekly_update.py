@@ -91,3 +91,80 @@ def test_banner_summarizes_guide_changes_not_raw_source_noise() -> None:
     assert "Deadline: April 15" in result
     assert "Strategic Petroleum Reserve" not in result
     assert "News" in result
+
+
+def test_summarize_source_changes_extracts_added_and_removed() -> None:
+    diff_text = (
+        "### Added/Modified Text\n\n"
+        "  + Application Deadline: June 15, 2025\n"
+        "  + New requirement: Data Management Plan required\n\n"
+        "### Removed Text\n\n"
+        "  - Application Deadline: March 1, 2025\n"
+    )
+
+    bullets = weekly_update.summarize_source_changes([("NIH_R15", diff_text)])
+
+    assert any("June 15, 2025" in b for b in bullets)
+    assert any("Data Management Plan" in b for b in bullets)
+    assert any("Removed" in b and "March 1, 2025" in b for b in bullets)
+
+
+def test_summarize_source_changes_deduplicates_and_caps_at_limit() -> None:
+    diff_text = (
+        "### Added/Modified Text\n\n"
+        + "\n".join(f"  + Change number {i}" for i in range(20))
+    )
+
+    bullets = weekly_update.summarize_source_changes([("src", diff_text)], limit=5)
+
+    assert len(bullets) <= 5
+
+
+def test_summarize_source_changes_empty_diff_returns_empty() -> None:
+    assert weekly_update.summarize_source_changes([("src", "")]) == []
+    assert weekly_update.summarize_source_changes([]) == []
+
+
+def test_decorate_weekly_update_with_source_diffs_shows_banner_even_when_guide_unchanged() -> None:
+    guide = "# Guide\n\nBudget: $300,000"
+    diff_text = (
+        "### Added/Modified Text\n\n"
+        "  + Budget ceiling raised to $500,000\n"
+    )
+
+    result = weekly_update.decorate_weekly_update(
+        guide,
+        guide,
+        ["Funding_Source"],
+        source_diffs=[("Funding_Source", diff_text)],
+    )
+
+    assert "## Weekly Update" in result
+    assert "Budget ceiling raised" in result
+
+
+def test_decorate_weekly_update_source_diffs_generic_bullet_when_diff_empty() -> None:
+    guide = "# Guide\n\nBudget: $300,000"
+
+    result = weekly_update.decorate_weekly_update(
+        guide,
+        guide,
+        ["Source_A"],
+        source_diffs=[("Source_A", "No meaningful changes detected.")],
+    )
+
+    assert "## Weekly Update" in result
+    assert "up to date" in result.lower()
+
+
+def test_decorate_weekly_update_no_source_diffs_still_omits_banner_when_unchanged() -> None:
+    guide = "# Guide\n\nBudget: $300,000"
+
+    result = weekly_update.decorate_weekly_update(
+        guide,
+        guide,
+        ["Noisy_Source"],
+    )
+
+    assert "## Weekly Update" not in result
+    assert result == guide

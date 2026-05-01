@@ -277,6 +277,14 @@ def _md_to_docx(md_text: str, path: str) -> None:
             i += 1
             continue
 
+        # --- blockquote ---
+        m = re.match(r"^>\s?(.*)", line)
+        if m:
+            p = doc.add_paragraph(style="Intense Quote")
+            _add_inline_formatting(p, m.group(1))
+            i += 1
+            continue
+
         # --- blank line ---
         if not line.strip():
             i += 1
@@ -509,6 +517,11 @@ def _md_to_pdf_with_highlights(md_text: str, path: str) -> None:
             _write_pdf_segments(pdf, prefix + content, font_size=11)
             continue
 
+        quote_m = re.match(r"^>\s?(.+)$", line)
+        if quote_m:
+            _write_pdf_segments(pdf, "  " + quote_m.group(1), font_size=10)
+            continue
+
         _write_pdf_segments(pdf, line, font_size=11)
 
     pdf.output(path)
@@ -706,6 +719,7 @@ def run_pipeline(
             previous_md=guide_md,
             updated_md=updated_md,
             changed_sources=changed_source_names,
+            source_diffs=[(name, diff) for name, _sections, diff in all_diffs],
         )
         logger.info("step=3 action=weekly_update_markup status=done")
 

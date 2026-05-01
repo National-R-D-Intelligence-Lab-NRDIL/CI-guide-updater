@@ -163,6 +163,62 @@ def summarize_guide_changes(previous_md: str, updated_md: str, limit: int = 6) -
     return compact
 
 
+def summarize_source_changes(
+    source_diffs: list[tuple[str, str]],
+    limit: int = 6,
+) -> list[str]:
+    """Extract human-readable bullets from structured ``differ.extract_changes`` output.
+
+    Args:
+        source_diffs: List of ``(source_name, diff_text)`` pairs where
+            ``diff_text`` is the output of ``differ.extract_changes``.
+        limit: Maximum number of bullets to return.
+
+    Returns:
+        Deduplicated list of concise change descriptions.
+    """
+    items: list[str] = []
+
+    for _source_name, diff_text in source_diffs:
+        if not diff_text or not diff_text.strip():
+            continue
+
+        added_match = re.search(
+            r"### Added/Modified Text\n\n(.*?)(?=\n###|\Z)",
+            diff_text,
+            re.DOTALL,
+        )
+        removed_match = re.search(
+            r"### Removed Text\n\n(.*?)(?=\n###|\Z)",
+            diff_text,
+            re.DOTALL,
+        )
+
+        if added_match:
+            for line in added_match.group(1).splitlines():
+                text = line.strip().lstrip("+").strip()
+                if text and len(text) > 3:
+                    items.append(text[:180])
+
+        if removed_match:
+            for line in removed_match.group(1).splitlines():
+                text = line.strip().lstrip("-").strip()
+                if text and len(text) > 3:
+                    items.append(f"Removed: {text[:170]}")
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        key = item.lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+        if len(result) >= limit:
+            break
+    return result
+
+
 def _source_label(source_name: str) -> str:
     """Make source identifiers more readable in the banner."""
     label = str(source_name or "").strip()
@@ -212,12 +268,36 @@ def decorate_weekly_update(
     previous_md: str,
     updated_md: str,
     changed_sources: list[str],
+    *,
+    source_diffs: list[tuple[str, str]] | None = None,
 ) -> str:
-    """Add the weekly update banner and red changed-text highlights."""
-    guide_change_bullets = summarize_guide_changes(previous_md, updated_md)
-    if not guide_change_bullets:
-        return strip_weekly_update_markup(updated_md)
+    """Add the weekly update banner and red changed-text highlights.
+
+    Args:
+        previous_md: The guide markdown before this run (may contain prior
+            weekly-update markup, which is stripped before comparison).
+        updated_md: The guide markdown produced by the LLM update.
+        changed_sources: Names of sources that had content changes.
+        source_diffs: Optional list of ``(source_name, diff_text)`` pairs from
+            ``differ.extract_changes``.  When supplied, banner bullets are
+            derived from the structured source diffs rather than the noisier
+            guide-text line diff, and the banner is always shown when sources
+            changed.
+    """
+    if source_diffs is not None:
+        # Prefer source-driven bullets; fall back to guide-text diff.
+        bullets = summarize_source_changes(source_diffs)
+        if not bullets:
+            bullets = summarize_guide_changes(previous_md, updated_md)
+        # When sources genuinely changed, always emit a banner even if the
+        # LLM produced no meaningful text diff.
+        if not bullets:
+            bullets = ["Source content was reviewed; guide text is up to date."]
+    else:
+        bullets = summarize_guide_changes(previous_md, updated_md)
+        if not bullets:
+            return strip_weekly_update_markup(updated_md)
 
     highlighted = highlight_changed_main_text(previous_md, updated_md)
-    banner = build_update_banner(guide_change_bullets, changed_sources)
+    banner = build_update_banner(bullets, changed_sources)
     return f"{banner}\n\n{highlighted}"

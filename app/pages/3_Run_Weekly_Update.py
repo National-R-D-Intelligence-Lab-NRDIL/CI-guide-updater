@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -14,6 +15,7 @@ import streamlit as st
 from app.components.shell import apply_app_chrome, render_page_header, render_sidebar
 from app.components.forms import select_program_form
 from app.components.preview import markdown_preview
+import weekly_update as _weekly_update
 from app.components.status import render_storage_status
 from app.state.session import init_session_state
 from src.services.output_service import load_outputs
@@ -293,9 +295,60 @@ if run_clicked:
         for artifact in result["artifacts"]:
             st.code(artifact)
 
-    outputs = load_outputs(selected_slug)
-    if outputs.get("ok") and outputs.get("markdown_content"):
-        markdown_preview(outputs["markdown_content"], title="Updated Guide Preview")
+    updated_guide_md = result.get("updated_guide_md", "")
+    previous_guide_md = result.get("previous_guide_md", "")
+
+    if not updated_guide_md:
+        outputs = load_outputs(selected_slug)
+        if outputs.get("ok"):
+            updated_guide_md = outputs.get("markdown_content", "")
+
+    if updated_guide_md:
+        tab_guide, tab_diff = st.tabs(["Updated Guide", "What Changed"])
+
+        with tab_guide:
+            st.markdown(updated_guide_md, unsafe_allow_html=True)
+
+        with tab_diff:
+            if previous_guide_md and updated_guide_md:
+                old_clean = _weekly_update.strip_weekly_update_markup(previous_guide_md)
+                new_clean = _weekly_update.strip_weekly_update_markup(updated_guide_md)
+                old_lines = old_clean.splitlines(keepends=True)
+                new_lines = new_clean.splitlines(keepends=True)
+                diff_lines = list(difflib.unified_diff(old_lines, new_lines, lineterm="", n=2))
+
+                if diff_lines:
+                    html_parts = [
+                        "<div style='font-family:monospace;font-size:13px;line-height:1.5;'>"
+                    ]
+                    for dl in diff_lines:
+                        if dl.startswith("---") or dl.startswith("+++") or dl.startswith("@@"):
+                            continue
+                        escaped = (
+                            dl.replace("&", "&amp;")
+                            .replace("<", "&lt;")
+                            .replace(">", "&gt;")
+                        )
+                        if dl.startswith("+"):
+                            html_parts.append(
+                                f"<div style='background:#d4edda;color:#155724;"
+                                f"padding:1px 4px;'>{escaped}</div>"
+                            )
+                        elif dl.startswith("-"):
+                            html_parts.append(
+                                f"<div style='background:#f8d7da;color:#721c24;"
+                                f"padding:1px 4px;'>{escaped}</div>"
+                            )
+                        else:
+                            html_parts.append(
+                                f"<div style='color:#555;padding:1px 4px;'>{escaped}</div>"
+                            )
+                    html_parts.append("</div>")
+                    st.markdown("\n".join(html_parts), unsafe_allow_html=True)
+                else:
+                    st.info("No text differences found between the previous and updated guide.")
+            else:
+                st.info("Previous guide content is unavailable; diff view requires both versions.")
 
     render_storage_status(result.get("storage"))
     with st.expander("Execution logs", expanded=False):

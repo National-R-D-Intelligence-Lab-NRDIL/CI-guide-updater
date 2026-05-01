@@ -58,6 +58,11 @@ def run_weekly_update(
         state_file = program_dir / "state.json"
         data_dir = program_dir / "data"
 
+        try:
+            previous_guide_md = guide_path.read_text(encoding="utf-8")
+        except Exception:
+            previous_guide_md = ""
+
         def _run() -> bool:
             return pipeline.run_pipeline(
                 sources_config=str(sources_path),
@@ -71,6 +76,14 @@ def run_weekly_update(
             )
 
         ok, logs = capture_logs(_run)
+
+        updated_guide_md = ""
+        latest_md = output_dir / "sponsor_guide_updated.md"
+        if latest_md.exists():
+            try:
+                updated_guide_md = latest_md.read_text(encoding="utf-8")
+            except Exception:
+                updated_guide_md = ""
 
         changed_sources = re.findall(r"step=2 source=(.+?) status=changed", logs)
         if not changed_sources:
@@ -106,6 +119,8 @@ def run_weekly_update(
             "artifacts": artifacts,
             "logs": logs,
             "storage": storage,
+            "previous_guide_md": previous_guide_md,
+            "updated_guide_md": updated_guide_md,
         }
     except UserFacingError as exc:
         return {"ok": False, "error": exc.message, "detail": exc.detail}
