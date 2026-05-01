@@ -22,12 +22,20 @@ from src.utils.secrets import get_secret
 _API_BASE = "https://api.github.com"
 _DEFAULT_BRANCH = "runtime-data"
 _DEFAULT_PREFIX = "runtime/programs"
-_SYNC_INTERVAL_SECONDS = 20
+# Streamlit re-runs the entire page script on every user interaction, so a short
+# interval triggers GitHub API calls constantly.  300 s (5 min) is a safe floor.
+_SYNC_INTERVAL_SECONDS = 300
+# Branch existence rarely changes; verify at most once per hour.
+_BRANCH_VERIFY_INTERVAL_SECONDS = 3600
 _GITHUB_RETRY_ATTEMPTS = 3
 _CACHE: dict[str, Any] = {
     "slug_list_at": 0.0,
     "slug_list": [],
     "hydrated_at": {},
+    # Timestamp of last successful _ensure_branch call.
+    "branch_verified_at": 0.0,
+    # remote_path -> sha  — avoids a GET before every PUT in _upsert_file.
+    "file_shas": {},
 }
 
 
@@ -199,6 +207,15 @@ def _ensure_branch() -> None:
         raise RuntimeError(f"Unable to create branch {branch}: {create_resp.status_code} {create_resp.text}")
 
 
+def _ensure_branch_cached() -> None:
+    """Call _ensure_branch at most once per _BRANCH_VERIFY_INTERVAL_SECONDS."""
+    now = time.time()
+    if now - float(_CACHE["branch_verified_at"]) < _BRANCH_VERIFY_INTERVAL_SECONDS:
+        return
+    _ensure_branch()
+    _CACHE["branch_verified_at"] = now
+
+
 def _remote_program_root(slug: str) -> str:
     cfg = _config()
     return f"{cfg['prefix']}/{slug}".strip("/")
@@ -261,13 +278,19 @@ def _get_file_content(remote_path: str) -> bytes:
 def _upsert_file(remote_path: str, content: bytes, message: str) -> None:
     owner, repo = _repo_parts()
     cfg = _config()
-    existing_sha = None
-    read_resp = _github_request("GET", f"/repos/{owner}/{repo}/contents/{remote_path}?ref={cfg['branch']}")
-    if read_resp.status_code == 200:
-        read_payload = _json_payload(resp=read_resp, context=f"checking '{remote_path}'")
-        existing_sha = read_payload.get("sha") if isinstance(read_payload, dict) else None
-    elif read_resp.status_code != 404:
-        raise RuntimeError(f"Unable to check {remote_path}: {read_resp.status_code} {read_resp.text}")
+
+    # Use the in-memory SHA cache to skip the GET before every PUT.  On a cache
+    # miss we fall back to fetching the current SHA from GitHub exactly once.
+    existing_sha: str | None = _CACHE["file_shas"].get(remote_path)
+    if existing_sha is None:
+        read_resp = _github_request("GET", f"/repos/{owner}/{repo}/contents/{remote_path}?ref={cfg['branch']}")
+        if read_resp.status_code == 200:
+            read_payload = _json_payload(resp=read_resp, context=f"checking '{remote_path}'")
+            existing_sha = read_payload.get("sha") if isinstance(read_payload, dict) else None
+            if existing_sha:
+                _CACHE["file_shas"][remote_path] = existing_sha
+        elif read_resp.status_code != 404:
+            raise RuntimeError(f"Unable to check {remote_path}: {read_resp.status_code} {read_resp.text}")
 
     payload: dict[str, Any] = {
         "message": message,
@@ -278,8 +301,30 @@ def _upsert_file(remote_path: str, content: bytes, message: str) -> None:
         payload["sha"] = existing_sha
 
     write_resp = _github_request("PUT", f"/repos/{owner}/{repo}/contents/{remote_path}", json_body=payload)
+
+    if write_resp.status_code == 409:
+        # SHA conflict — another writer changed the file; clear cache and retry once.
+        _CACHE["file_shas"].pop(remote_path, None)
+        read_resp2 = _github_request("GET", f"/repos/{owner}/{repo}/contents/{remote_path}?ref={cfg['branch']}")
+        if read_resp2.status_code == 200:
+            read_payload2 = _json_payload(resp=read_resp2, context=f"re-checking '{remote_path}'")
+            fresh_sha = read_payload2.get("sha") if isinstance(read_payload2, dict) else None
+            if fresh_sha:
+                payload["sha"] = fresh_sha
+                _CACHE["file_shas"][remote_path] = fresh_sha
+        write_resp = _github_request("PUT", f"/repos/{owner}/{repo}/contents/{remote_path}", json_body=payload)
+
     if write_resp.status_code not in {200, 201}:
         raise RuntimeError(f"Unable to write {remote_path}: {write_resp.status_code} {write_resp.text}")
+
+    # Update the SHA cache from the write response so future calls skip the GET.
+    try:
+        resp_body = write_resp.json()
+        new_sha = resp_body.get("content", {}).get("sha") if isinstance(resp_body, dict) else None
+        if new_sha:
+            _CACHE["file_shas"][remote_path] = new_sha
+    except Exception:
+        pass
 
 
 def _delete_file(remote_path: str, message: str) -> None:
@@ -298,6 +343,7 @@ def _delete_file(remote_path: str, message: str) -> None:
     del_resp = _github_request("DELETE", f"/repos/{owner}/{repo}/contents/{remote_path}", json_body=payload)
     if del_resp.status_code not in {200, 404}:
         raise RuntimeError(f"Unable to delete {remote_path}: {del_resp.status_code} {del_resp.text}")
+    _CACHE["file_shas"].pop(remote_path, None)
 
 
 def list_program_slugs() -> list[str]:
@@ -312,7 +358,7 @@ def list_program_slugs() -> list[str]:
         return sorted(local | remote)
 
     try:
-        _ensure_branch()
+        _ensure_branch_cached()
         remote = {
             str(item.get("name", ""))
             for item in _list_dir(_config()["prefix"])
@@ -338,7 +384,7 @@ def hydrate_program(slug: str, *, force: bool = False) -> dict[str, Any]:
         return {"ok": True, "enabled": True, "message": "Hydration skipped (recent)."}
 
     try:
-        _ensure_branch()
+        _ensure_branch_cached()
         local_program = Path("programs") / slug
         local_program.mkdir(parents=True, exist_ok=True)
         remote_root = _remote_program_root(slug)
@@ -400,7 +446,7 @@ def persist_program(slug: str) -> dict[str, Any]:
         return {"ok": True, "enabled": False, "message": "Remote persistence disabled."}
 
     try:
-        _ensure_branch()
+        _ensure_branch_cached()
         local_program = Path("programs") / slug
         if not local_program.exists():
             return {"ok": False, "enabled": True, "message": f"Local directory not found: {local_program}"}
@@ -459,7 +505,7 @@ def persist_paths(slug: str, relative_paths: list[str]) -> dict[str, Any]:
         return {"ok": True, "enabled": False, "message": "Remote persistence disabled."}
 
     try:
-        _ensure_branch()
+        _ensure_branch_cached()
         local_program = Path("programs") / slug
         if not local_program.exists():
             return {"ok": False, "enabled": True, "message": f"Local directory not found: {local_program}"}
