@@ -80,16 +80,46 @@ def _load_program_status(slug: str) -> dict:
     return status
 
 
+_PROGRAMS_PER_PAGE = 10
+
+
 def _render_portfolio_dashboard() -> None:
-    """Render the program portfolio overview."""
+    """Render the program portfolio overview with search and pagination."""
     records = list_program_records()
     if not records:
         st.info("No programs yet. Create one using Set Up Program.")
         return
 
-    st.markdown(f"### All Programs ({len(records)})")
-
     programs = [_load_program_status(r["slug"]) for r in records]
+
+    search_query = st.text_input(
+        "Filter programs",
+        placeholder="Type to filter by name…",
+        label_visibility="collapsed",
+        key="program_search",
+    )
+
+    if search_query:
+        query_lower = search_query.lower()
+        programs = [
+            p for p in programs
+            if query_lower in p["display_name"].lower() or query_lower in p["slug"]
+        ]
+
+    if st.session_state.get("_prev_search") != search_query:
+        st.session_state["_prev_search"] = search_query
+        st.session_state["dashboard_page"] = 0
+
+    total = len(programs)
+    total_pages = max(1, -(-total // _PROGRAMS_PER_PAGE))  # ceil division
+
+    page = st.session_state.get("dashboard_page", 0)
+    page = min(page, total_pages - 1)
+
+    start = page * _PROGRAMS_PER_PAGE
+    page_programs = programs[start : start + _PROGRAMS_PER_PAGE]
+
+    st.markdown(f"### All Programs ({total})")
 
     cols = st.columns([2.5, 1, 1, 1, 1.5])
     cols[0].markdown("**Program**")
@@ -98,7 +128,7 @@ def _render_portfolio_dashboard() -> None:
     cols[3].markdown("**Output**")
     cols[4].markdown("**Last Updated**")
 
-    for prog in programs:
+    for prog in page_programs:
         cols = st.columns([2.5, 1, 1, 1, 1.5])
         if cols[0].button(prog["display_name"], key=f"select_{prog['slug']}", use_container_width=True):
             st.session_state["selected_program_slug"] = prog["slug"]
@@ -108,6 +138,22 @@ def _render_portfolio_dashboard() -> None:
         cols[2].write("Yes" if prog["has_guide"] else "—")
         cols[3].write("Yes" if prog["has_output"] else "—")
         cols[4].write(prog["last_updated"] or "—")
+
+    if total_pages > 1:
+        nav_left, nav_info, nav_right = st.columns([1, 2, 1])
+        with nav_left:
+            if st.button("← Previous", disabled=(page == 0), key="dash_prev"):
+                st.session_state["dashboard_page"] = page - 1
+                st.rerun()
+        with nav_info:
+            st.markdown(
+                f"<div style='text-align:center;padding-top:6px'>Page {page + 1} of {total_pages}</div>",
+                unsafe_allow_html=True,
+            )
+        with nav_right:
+            if st.button("Next →", disabled=(page >= total_pages - 1), key="dash_next"):
+                st.session_state["dashboard_page"] = page + 1
+                st.rerun()
 
 
 def main() -> None:
