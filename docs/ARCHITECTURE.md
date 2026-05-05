@@ -7,23 +7,24 @@ It is intentionally split into focused diagrams so each view stays readable.
 
 ```mermaid
 flowchart LR
-  CLI["CLI entry points\nbootstrap.py / pipeline.py / collect_review.py"]
-  UI["UI entry point\nstreamlit run app/main.py"]
+  CLI["CLI entry points\nbootstrap.py / pipeline.py / collect_review.py\ninternal_pipeline.py"]
+  UI["UI entry point\nstreamlit run app/main.py\n(portfolio dashboard + workflow pages)"]
   discover["discover.py"]
-  scraper["scraper.py"]
+  scraper["scraper.py\n(content-zone hashing)"]
   differ["differ.py"]
   updater["updater.py"]
   generator["generator.py"]
   cite["cite.py"]
   review["review.py + review_async.py + collect_review.py"]
   persist["src/services/persistence_service.py"]
-  output["src/services/output_service.py"]
+  exporters["src/exporters/\ndocx_export.py / pdf_export.py"]
   files["programs/<slug>/* artifacts"]
+  internalFiles["output internal supplement\n(no LLM call)"]
 
   CLI -->|"program name / guide path / run options"| discover
   UI -->|"program name / approved links / operator actions"| discover
   discover -->|"candidate sources.json entries"| scraper
-  scraper -->|"scraped text + snapshots + state.json"| differ
+  scraper -->|"content-zone hash + snapshots + state.json"| differ
   differ -->|"diff_text + changed source set"| updater
   discover -->|"approved sources + program context"| generator
   updater -->|"updated guide.md sections"| cite
@@ -31,27 +32,29 @@ flowchart LR
   cite -->|"guide.md + inline citations + evidence refs"| review
   review -->|"approved sources + approved draft"| persist
   persist -->|"guide.md / sources.json / state.json / review artifacts"| files
-  persist -->|"normalized artifact payload"| output
-  output -->|"md/docx/pdf + evidence artifacts"| files
-
-  subgraph Legend
-    l1["Rectangles = modules or services"]
-    l2["Edge labels = payload crossing the boundary"]
-    l3["files node = persisted artifacts under programs/<slug>/"]
-  end
+  persist -->|"md content"| exporters
+  exporters -->|"docx/pdf artifacts"| files
+  CLI -->|"internal sources (data_class=internal)"| internalFiles
 ```
 
 `bootstrap.py` starts a new program run from the CLI. It collects a program prompt, runs discovery, prepares a
 review package, and coordinates first-draft generation after source approval.
 
-`app/main.py` and `app/pages/*` provide the interactive Streamlit path for non-CLI users. The UI triggers the same
-core workflows as the scripts while persisting artifacts under `programs/<slug>/`.
+`internal_pipeline.py` is the internal-data entry point. It uses only Python `string.Template` substitution and
+never calls any external LLM. Sources must have `data_class="internal"` and a `template_fields` dict. This is the
+mandatory path for any confidential institutional data.
+
+`app/main.py` and `app/pages/*` provide the interactive Streamlit path for non-CLI users. The home page shows a
+portfolio dashboard listing all `programs/<slug>/` workspaces with source count, guide status, and last-updated
+date. The UI triggers the same core workflows as the scripts while persisting artifacts under `programs/<slug>/`.
 
 `discover.py` finds likely public source URLs for a program and prepares candidates for review. It is intentionally
 Gemini-bound because it relies on Gemini native SDK search grounding and therefore does not use `src/utils/llm_client.py`.
 
 `scraper.py` fetches and cleans source pages, producing normalized text snapshots for downstream comparison and
-citation checks.
+citation checks. Change detection uses content-zone hashing — `<nav>`, `<header>`, `<footer>`, cookie banners, and
+other cosmetic elements are stripped before the hash is computed so only substantive content changes trigger the
+update pipeline.
 
 `differ.py` compares newly scraped source text with prior snapshots from `state.json` and emits focused change text
 used for targeted guide updates.
@@ -70,27 +73,39 @@ review loops, including shared-folder workflows and optional reviewer notificati
 `src/services/persistence_service.py` abstracts runtime reads and writes for program artifacts, selecting local or
 GitHub-backed storage based on environment configuration.
 
-`src/services/output_service.py` generates user-facing output artifacts (`.md`, `.docx`, `.pdf`, and evidence files)
-from the current guide and review context.
+`src/exporters/docx_export.py` converts guide markdown to `.docx`. Extracted from `pipeline.py` as a
+single-responsibility module; used by both `pipeline.py` and `src/services/review_service.py`.
+
+`src/exporters/pdf_export.py` converts guide markdown to `.pdf` using fpdf2. Also extracted from `pipeline.py`;
+supports weekly-update red highlight spans in addition to standard markdown rendering.
 
 ## Trust boundaries
 
 ```mermaid
 flowchart TB
   userIn["User input\n(program name + submitted URLs)"]
+  internalIn["Internal data input\n(data_class=internal sources)"]
   appAuth["app/auth.py\nAzure AD auth gate"]
   uiCreate["app/pages/1_Create_New_Program.py"]
   discoverFn["discover.discover_sources()"]
   discoverUrl["discover.validate_urls()\nnormalize_and_validate_public_url()"]
-  scraperFn["scraper.fetch_and_clean_text()\nnormalize_and_validate_public_url()"]
+  scraperFn["scraper.fetch_and_clean_text()\ncontent-zone hash + normalize_and_validate_public_url()"]
   reviewSvc["src/services/review_service.py"]
   gen["generator.py\nassert_public_sources()"]
   upd["updater.py / pipeline.py update step\nassert_public_sources()"]
   cite["cite.py / pipeline citation step\nassert_public_sources()"]
   publish["review_service publish gate\nassert_public_sources()"]
+  internalPipeline["internal_pipeline.py\ntemplate substitution only"]
+  localOut["local output only\n(no LLM call, no network)"]
 
   subgraph Untrusted["Untrusted input zone"]
     userIn
+  end
+
+  subgraph InternalZone["Internal-data zone (never reaches LLM)"]
+    internalIn
+    internalPipeline
+    localOut
   end
 
   subgraph Validated["Validated input zone"]
@@ -108,6 +123,9 @@ flowchart TB
     cite
     publish
   end
+
+  internalIn -->|"template_fields dict"| internalPipeline
+  internalPipeline -->|"rendered markdown supplement"| localOut
 
   userIn -->|"interactive session"| appAuth
   appAuth -->|"authenticated operator"| uiCreate
@@ -132,6 +150,10 @@ code path that places program text into prompts should apply the same sanitizer 
 
 `assert_public_sources()` is required at every LLM handoff boundary, including generation, updating, citation, and the
 review-service publish gate, so only public-classified sources can be used for model operations and release output.
+
+`internal_pipeline.py` enforces the internal-data boundary at the point of entry: all sources must have
+`data_class="internal"` and no network or LLM call is made. Template fields are substituted locally and the rendered
+supplement is written to the output directory only.
 
 `app/auth.py` acts as the authentication boundary for Streamlit UI sessions. CLI entry points remain explicit local
 operator actions and are not behind the web auth gate.
@@ -170,8 +192,9 @@ model calls for generation, update, citation, and discovery (with discovery usin
 ## Entry points and when to use them
 
 - `python3 bootstrap.py`: create a new program, discover sources, run review, and generate a first draft.
-- `python3 pipeline.py`: run recurring update cycles for an existing program using saved `guide.md` and `sources.json`.
-- `streamlit run app/main.py`: use the guided UI for source review, generation, update runs, and output downloads.
+- `python3 pipeline.py`: run recurring update cycles for an existing program using saved `guide.md` and `sources.json`. Export logic is delegated to `src/exporters/docx_export.py` and `src/exporters/pdf_export.py`.
+- `python3 internal_pipeline.py --sources internal_sources.json`: render internal/confidential data into a markdown supplement using template substitution only. No LLM call, no network request. All sources must have `data_class="internal"`.
+- `streamlit run app/main.py`: use the guided UI for source review, generation, update runs, and output downloads. The home page displays a portfolio dashboard of all programs.
 
 `python3 collect_review.py` is a supporting operational entry point for async review completion, not a primary
 generation/update entry path.

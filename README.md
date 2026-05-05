@@ -4,6 +4,10 @@ CI Sponsor Guide Tool helps teams discover, review, and keep grant sponsor guide
 
 It is designed for non-developers to use in day-to-day work, while still staying fully scriptable from the command line.
 
+It also includes:
+- a Streamlit portfolio dashboard that lists all programs on the home page, and
+- `internal_pipeline.py`, a template-only pipeline for internal data that must never be sent to an external LLM.
+
 ## What It Does
 
 1. Finds official source pages for a grant program.
@@ -79,6 +83,8 @@ Available pages:
 | 3 | View Outputs | Preview the guide and download `.md` / `.docx` / `.pdf` immediately |
 | 4 | Weekly Update | Refresh an existing guide when sponsor pages change, with an update banner and red changed-text highlights |
 | 5 | Audit Evidence | Trace diffs, citations, and evidence back to source pages |
+
+The Streamlit home page also shows a portfolio dashboard listing all `programs/<slug>/` workspaces. Click a program to make it the current selection for the rest of the workflow.
 
 After Step 2, output files are ready. You do not need to run Weekly Update before viewing results.
 
@@ -237,7 +243,7 @@ Those changes update `programs/<slug>/sources.json` directly, so the next weekly
 What happens during a run:
 
 1. Every source URL is scraped again.
-2. The new content is compared with the last snapshot.
+2. Content-zone hashing compares the new page against the last snapshot (ignores nav/footer/cookie/banner noise). If the content zone changed, the pipeline proceeds to compute diffs and refresh the guide.
 3. The guide input is the previous generated guide, not always the original first baseline.
 4. If anything changed, the diff is sent to Gemini.
 5. Gemini rewrites only the affected sections.
@@ -296,6 +302,35 @@ Default behavior is to block the LLM handoff for external providers. Local model
 ```env
 SENSITIVE_DATA_POLICY=block  # block, warn, or off
 LLM_LOCAL_MODE=false         # set true for a local-only model workflow
+```
+
+### Internal data rendering (template-only)
+
+If you have internal/confidential data that must never be sent to an external LLM, use `internal_pipeline.py`.
+
+This pipeline performs template substitution locally and writes a standalone markdown supplement:
+
+```bash
+python3 internal_pipeline.py \
+  --sources internal_sources.json \
+  --guide programs/<slug>/guide.md \
+  --output output_internal
+```
+
+Example `internal_sources.json`:
+
+```json
+[
+  {
+    "name": "Internal_Budget_Data",
+    "data_class": "internal",
+    "template_fields": {
+      "section_title": "Internal Budget Guidelines",
+      "content": "Maximum indirect cost rate: 52%.",
+      "source_name": "Finance Office"
+    }
+  }
+]
 ```
 
 ## Unit Tests

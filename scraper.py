@@ -104,6 +104,59 @@ def _clean_html_text(html: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
+def _extract_content_zone(html: str) -> str:
+    """Extract main content text, stripping nav, header, footer, and cookie banners.
+
+    Falls back to full-page _clean_html_text if no semantic content zone is found.
+    This reduces false-positive change detection from cosmetic page elements.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+
+    _NOISE_TAGS = ["nav", "header", "footer"]
+    _NOISE_ROLES = {"navigation", "banner", "contentinfo"}
+    _NOISE_IDS = {"cookie", "consent", "gdpr", "banner", "nav", "footer", "header"}
+    _NOISE_CLASSES = {"cookie", "consent", "gdpr", "banner", "nav-", "navbar",
+                      "footer", "header", "site-header", "site-footer",
+                      "skip-nav", "breadcrumb"}
+
+    for tag in soup.find_all(_NOISE_TAGS):
+        tag.decompose()
+
+    for tag in soup.find_all(attrs={"role": True}):
+        if tag.get("role", "").lower() in _NOISE_ROLES:
+            tag.decompose()
+
+    for tag in soup.find_all(True):
+        tag_id = str(tag.get("id", "")).lower()
+        if any(noise in tag_id for noise in _NOISE_IDS):
+            tag.decompose()
+            continue
+        tag_classes = " ".join(str(c).lower() for c in (tag.get("class") or []))
+        if any(noise in tag_classes for noise in _NOISE_CLASSES):
+            tag.decompose()
+
+    main = soup.find("main") or soup.find(attrs={"role": "main"})
+    if main:
+        text = main.get_text(separator="\n")
+    else:
+        article = soup.find("article")
+        if article:
+            text = article.get_text(separator="\n")
+        else:
+            text = soup.get_text(separator="\n")
+
+    lines = (line.strip() for line in text.splitlines())
+    result = "\n".join(line for line in lines if line)
+
+    if not result:
+        return _clean_html_text(html)
+
+    return result
+
+
 def _extract_pdf_text_with_pypdf(pdf_bytes: bytes) -> tuple[str, int]:
     """Extract PDF text with pypdf and return (text, page_count)."""
     pdf_module = import_module("pypdf")
@@ -277,6 +330,7 @@ def fetch_source_payload(url: str) -> dict:
         return _extract_pdf_payload(content_bytes, safe_url)
 
     html_text = _clean_html_text(response.text)
+    content_zone_text = _extract_content_zone(response.text)
     extraction_method = "html"
     final_text = html_text
     if not (html_text and not _is_likely_unscrapable_page(response.text)):
@@ -285,6 +339,7 @@ def fetch_source_payload(url: str) -> dict:
             final_text = f"{html_text}\n\n{fallback_text}"
         else:
             final_text = fallback_text
+        content_zone_text = final_text
 
     return {
         "text": final_text,
@@ -295,6 +350,7 @@ def fetch_source_payload(url: str) -> dict:
             "page_count": None,
             "content_type": content_type or "text/html",
         },
+        "content_zone_text": content_zone_text,
     }
 
 
@@ -322,6 +378,7 @@ def fetch_source_payload_from_source(source: dict) -> dict:
         pdf_bytes = path.read_bytes()
         payload = _extract_pdf_payload(pdf_bytes, str(path))
         payload["metadata"]["file_path"] = str(path)
+        payload["content_zone_text"] = payload["text"]
         return payload
 
     url = str(source.get("url", "")).strip() if isinstance(source, dict) else ""
@@ -362,7 +419,8 @@ def check_for_updates_from_source(
     payload = fetch_source_payload_from_source(source)
     text = payload["text"]
     metadata = payload.get("metadata", {})
-    new_hash = generate_hash(text)
+    content_zone = payload.get("content_zone_text", text)
+    new_hash = generate_hash(content_zone)
     now = datetime.now(timezone.utc).isoformat()
 
     state = _load_state(state_file)

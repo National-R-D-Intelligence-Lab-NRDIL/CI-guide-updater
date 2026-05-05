@@ -1,11 +1,12 @@
 import zipfile
 from pathlib import Path
 
-import pipeline
+from src.exporters.docx_export import md_to_docx
+from src.exporters.pdf_export import md_to_pdf, _weekly_highlight_spans_to_pdf_html
 
 
 def test_weekly_highlight_spans_convert_to_pdf_font_tags() -> None:
-    html = pipeline._weekly_highlight_spans_to_pdf_html(
+    html = _weekly_highlight_spans_to_pdf_html(
         '<span style="color: #c1121f;">Changed deadline</span>'
     )
 
@@ -15,7 +16,7 @@ def test_weekly_highlight_spans_convert_to_pdf_font_tags() -> None:
 def test_docx_export_preserves_weekly_highlight_color(tmp_path: Path) -> None:
     docx_path = tmp_path / "guide.docx"
 
-    pipeline._md_to_docx(
+    md_to_docx(
         "# Guide\n\n<span style=\"color: #c1121f;\">Changed deadline</span>",
         str(docx_path),
     )
@@ -30,7 +31,7 @@ def test_docx_export_preserves_weekly_highlight_color(tmp_path: Path) -> None:
 def test_docx_export_strips_comment_markers_and_span_tags_from_headings(tmp_path: Path) -> None:
     docx_path = tmp_path / "guide.docx"
 
-    pipeline._md_to_docx(
+    md_to_docx(
         "<!-- weekly-update-banner:end -->\n"
         '## <span style="color: #c1121f;">Cost Share Requirements</span>',
         str(docx_path),
@@ -48,7 +49,7 @@ def test_docx_export_strips_comment_markers_and_span_tags_from_headings(tmp_path
 def test_pdf_export_uses_explicit_red_color_for_weekly_highlights(tmp_path: Path) -> None:
     pdf_path = tmp_path / "guide.pdf"
 
-    pipeline._md_to_pdf(
+    md_to_pdf(
         '<span style="color: #c1121f;">Changed deadline</span>',
         str(pdf_path),
     )

@@ -854,20 +854,21 @@ def _write_output_files(
     guide_md: str, evidence: list[dict], output_dir: Path
 ) -> None:
     """Write md, docx, pdf, and evidence.json output files."""
-    import pipeline
+    from src.exporters.docx_export import md_to_docx
+    from src.exporters.pdf_export import md_to_pdf
 
     md_path = output_dir / "sponsor_guide_updated.md"
     md_path.write_text(guide_md, encoding="utf-8")
 
     docx_path = output_dir / "sponsor_guide_updated.docx"
     try:
-        pipeline._md_to_docx(guide_md, str(docx_path))
+        md_to_docx(guide_md, str(docx_path))
     except Exception:
         pass
 
     try:
         pdf_path = output_dir / "sponsor_guide_updated.pdf"
-        pipeline._md_to_pdf(guide_md, str(pdf_path))
+        md_to_pdf(guide_md, str(pdf_path))
     except Exception:
         pass
 
