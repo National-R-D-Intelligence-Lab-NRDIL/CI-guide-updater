@@ -5,7 +5,7 @@ CI Sponsor Guide Tool helps teams discover, review, and keep grant sponsor guide
 It is designed for non-developers to use in day-to-day work, while still staying fully scriptable from the command line.
 
 It also includes:
-- a Streamlit portfolio dashboard that lists all programs on the home page, and
+- a dedicated Streamlit Program Dashboard page for browsing and selecting workspaces, and
 - `internal_pipeline.py`, a template-only pipeline for internal data that must never be sent to an external LLM.
 
 ## What It Does
@@ -78,13 +78,14 @@ Available pages:
 
 | Step | Page | What it does |
 | --- | --- | --- |
+| Dashboard | Program Dashboard | Browse/search all `programs/<slug>/` workspaces and select the current program |
 | 1 | Create New Program | Discover candidate source pages for a new grant program or funding topic |
 | 2 | Review & Generate | Approve sources, generate the first draft with citations, and get output files |
 | 3 | View Outputs | Preview the guide and download `.md` / `.docx` / `.pdf` immediately |
 | 4 | Weekly Update | Refresh an existing guide when sponsor pages change, with an update banner and red changed-text highlights |
 | 5 | Audit Evidence | Trace diffs, citations, and evidence back to source pages |
 
-The Streamlit home page also shows a portfolio dashboard listing all `programs/<slug>/` workspaces. Click a program to make it the current selection for the rest of the workflow.
+The Streamlit home page includes an **Open Program Dashboard** button plus a program count. Open the Program Dashboard page to browse/search workspaces and click a program to make it the current selection for the rest of the workflow.
 
 After Step 2, output files are ready. You do not need to run Weekly Update before viewing results.
 
