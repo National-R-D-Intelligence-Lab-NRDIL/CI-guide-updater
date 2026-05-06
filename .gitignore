@@ -11,6 +11,8 @@ build/
 
 # Runtime data (regenerated on each run)
 output/
+programs/*
+!programs/README.md
 programs/**/state.json
 programs/**/data/
 programs/**/review/
