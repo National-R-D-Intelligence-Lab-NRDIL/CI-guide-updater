@@ -137,6 +137,7 @@ def generate_guide(
     assert_public_sources(sources, context="guide generation")
 
     scraped_sources: list[tuple[str, str, str, str]] = []
+    scrape_failures: list[str] = []
     for src in sources:
         name = str(src.get("name", "")).strip()
         url = str(src.get("url", "")).strip()
@@ -151,8 +152,13 @@ def generate_guide(
             scraped_sources.append((name, source_ref, text, source_method))
         except Exception as exc:
             logger.warning("event=scrape_failed source=%s error=%s", name, exc)
+            label = source_ref or name or "<unknown source>"
+            scrape_failures.append(f"{label}: {exc}")
 
     if not scraped_sources:
+        detail = "; ".join(scrape_failures[:5]).strip()
+        if detail:
+            raise RuntimeError(f"No sources could be scraped. Failures: {detail}")
         raise RuntimeError("No sources could be scraped.")
 
     per_source_budget = _source_input_budget(len(scraped_sources))

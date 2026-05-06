@@ -34,6 +34,16 @@ _OCR_TIMEOUT_S = 60
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 
 def _lock_file_path(state_file: str) -> str:
     """Return the lock-file path associated with a state file."""
@@ -65,7 +75,7 @@ def _fetch_with_retries(safe_url: str) -> requests.Response:
 
     for attempt in range(attempts):
         try:
-            response = requests.get(safe_url, timeout=30)
+            response = requests.get(safe_url, timeout=30, headers=DEFAULT_REQUEST_HEADERS)
             if response.status_code in {429, 503} and attempt < attempts - 1:
                 base = 2 ** (attempt + 1)
                 sleep_s = base + random.uniform(0, 1)
