@@ -9,6 +9,9 @@ import os
 import re
 from typing import Optional
 
+import requests
+from bs4 import BeautifulSoup
+
 import scraper
 from src.utils.llm_client import get_default_model, get_llm_client
 from src.utils.sensitive_data import enforce_sensitive_data_policy
@@ -60,6 +63,23 @@ Rules:
 - Key Dates tables: use compact rows (header, separator, then data rows); never pad cells with spaces to fill width.
 - At the end, list every source URL under a "## Sources" heading.
 """
+
+
+def _best_effort_fetch_text(url: str) -> str:
+    """Fetch readable page text directly when primary scraper fails."""
+    response = requests.get(
+        url,
+        timeout=30,
+        headers=getattr(scraper, "DEFAULT_REQUEST_HEADERS", {}),
+    )
+    response.raise_for_status()
+    html = str(getattr(response, "text", "") or "")
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    text = soup.get_text(separator="\n")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(lines)
 
 
 def _truncate_for_llm(text: str, max_chars: int, context: str) -> str:
@@ -156,8 +176,21 @@ def generate_guide(
             scraped_sources.append((name, source_ref, text, source_method))
         except Exception as exc:
             logger.warning("event=scrape_failed source=%s error=%s", name, exc)
-            label = source_ref or name or "<unknown source>"
-            scrape_failures.append(f"{label}: {type(exc).__name__}: {exc}")
+            fallback_text = ""
+            if url:
+                try:
+                    fallback_text = _best_effort_fetch_text(url)
+                except Exception as fallback_exc:
+                    logger.warning(
+                        "event=scrape_fallback_failed source=%s error=%s",
+                        name,
+                        fallback_exc,
+                    )
+            if fallback_text:
+                scraped_sources.append((name, source_ref, fallback_text, "html_fallback"))
+            else:
+                label = source_ref or name or "<unknown source>"
+                scrape_failures.append(f"{label}: {type(exc).__name__}: {exc}")
 
     if not scraped_sources:
         detail = "; ".join(scrape_failures[:5]).strip()
