@@ -360,9 +360,21 @@ def _resolve_local_source_path(file_path: str) -> Path:
     if not raw:
         raise ValueError("Local source path is required.")
     candidate = Path(raw).expanduser()
-    if not candidate.is_absolute():
-        candidate = Path.cwd() / candidate
-    resolved = candidate.resolve()
+    if candidate.is_absolute():
+        resolved = candidate.resolve()
+    else:
+        # Streamlit Cloud can launch from a nested working directory (for
+        # example `app/`), so resolve relative source paths from both the
+        # active cwd and the repository root that contains this module.
+        search_roots = [Path.cwd(), Path(__file__).resolve().parent]
+        resolved = None
+        for root in search_roots:
+            root_candidate = (root / candidate).resolve()
+            if root_candidate.exists():
+                resolved = root_candidate
+                break
+        if resolved is None:
+            resolved = (Path.cwd() / candidate).resolve()
     if not resolved.exists():
         raise FileNotFoundError(f"Local source file not found: {resolved}")
     if resolved.suffix.lower() != ".pdf":

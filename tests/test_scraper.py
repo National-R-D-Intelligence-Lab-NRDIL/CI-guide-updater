@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -151,6 +152,43 @@ class ScraperTests(unittest.TestCase):
             file_path.write_bytes(b"%PDF-1.7 fake bytes")
 
             payload = scraper.fetch_source_payload_from_source({"file_path": str(file_path)})
+
+            self.assertEqual(payload["text"], "uploaded pdf text")
+            self.assertEqual(payload["metadata"]["file_path"], str(file_path.resolve()))
+            self.assertEqual(payload["metadata"]["extraction_method"], "pypdf")
+
+    @patch(
+        "scraper._extract_pdf_payload",
+        return_value={
+            "text": "uploaded pdf text",
+            "metadata": {
+                "extraction_method": "pypdf",
+                "character_count": 17,
+                "page_count": 1,
+                "content_type": "application/pdf",
+            },
+        },
+    )
+    def test_fetch_source_payload_from_source_resolves_relative_path_from_repo_root(
+        self, _mock_extract_payload
+    ) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        app_dir = repo_root / "app"
+        programs_dir = repo_root / "programs"
+        with tempfile.TemporaryDirectory(dir=programs_dir) as tmp_dir:
+            uploads_dir = Path(tmp_dir) / "review" / "uploads"
+            uploads_dir.mkdir(parents=True)
+            file_path = uploads_dir / "uploaded.pdf"
+            file_path.write_bytes(b"%PDF-1.7 fake bytes")
+            relative_file_path = str(file_path.relative_to(repo_root))
+
+            old_cwd = Path.cwd()
+            try:
+                # Simulate Streamlit Cloud running with cwd at app/.
+                os.chdir(app_dir)
+                payload = scraper.fetch_source_payload_from_source({"file_path": relative_file_path})
+            finally:
+                os.chdir(old_cwd)
 
             self.assertEqual(payload["text"], "uploaded pdf text")
             self.assertEqual(payload["metadata"]["file_path"], str(file_path.resolve()))
