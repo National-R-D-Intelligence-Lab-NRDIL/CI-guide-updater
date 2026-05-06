@@ -166,9 +166,15 @@ def _timestamped_output_path(output_dir: str, stem: str, suffix: str, timestamp:
 # Snapshot reader
 # ---------------------------------------------------------------------------
 
+def _safe_filename(name: str) -> str:
+    """Sanitize a source name to match the scraper's file-naming convention."""
+    return re.sub(r"[^A-Za-z0-9_-]", "_", name)
+
+
 def _read_snapshot(name: str, data_dir: str) -> str:
     """Return the previously saved text snapshot, or ``""`` on first run."""
-    path = os.path.join(data_dir, f"{name}_latest.txt")
+    safe_name = _safe_filename(name)
+    path = os.path.join(data_dir, f"{safe_name}_latest.txt")
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as fh:
             return fh.read()
@@ -177,7 +183,8 @@ def _read_snapshot(name: str, data_dir: str) -> str:
 
 def _read_snapshot_metadata(name: str, data_dir: str) -> dict:
     """Return extraction metadata sidecar for a source snapshot, if present."""
-    path = os.path.join(data_dir, f"{name}_latest.meta.json")
+    safe_name = _safe_filename(name)
+    path = os.path.join(data_dir, f"{safe_name}_latest.meta.json")
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as fh:
