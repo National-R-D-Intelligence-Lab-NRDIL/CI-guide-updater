@@ -28,6 +28,12 @@ class _MockResponse:
         return None
 
 
+class _MockResponseNoHeaders(_MockResponse):
+    def __init__(self, text: str, status_code: int = 200, content: Optional[bytes] = None) -> None:
+        super().__init__(text=text, status_code=status_code, headers={}, content=content)
+        self.headers = None
+
+
 class ScraperTests(unittest.TestCase):
     @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
     @patch("scraper.time.sleep")
@@ -72,6 +78,16 @@ class ScraperTests(unittest.TestCase):
         self.assertEqual(text, "ok")
         self.assertEqual(mock_get.call_count, 2)
         self.assertGreaterEqual(mock_sleep.call_args[0][0], 5.0)
+
+    @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
+    @patch("scraper.requests.get")
+    def test_fetch_source_payload_handles_missing_response_headers(self, mock_get, _mock_normalize) -> None:
+        mock_get.return_value = _MockResponseNoHeaders("<html><body><p>ok</p></body></html>")
+
+        payload = scraper.fetch_source_payload("https://example.org/no-headers")
+
+        self.assertEqual(payload["text"], "ok")
+        self.assertEqual(payload["metadata"]["content_type"], "text/html")
 
     @patch("scraper.normalize_and_validate_public_url", side_effect=lambda url, context: url)
     @patch("scraper.time.sleep")

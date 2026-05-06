@@ -45,6 +45,15 @@ DEFAULT_REQUEST_HEADERS = {
 }
 
 
+def _header_get(response: requests.Response, key: str) -> str:
+    """Return a response header value safely even for malformed clients."""
+    headers = getattr(response, "headers", None)
+    if hasattr(headers, "get"):
+        value = headers.get(key)
+        return str(value) if value is not None else ""
+    return ""
+
+
 def _lock_file_path(state_file: str) -> str:
     """Return the lock-file path associated with a state file."""
     return f"{state_file}.lock"
@@ -79,7 +88,7 @@ def _fetch_with_retries(safe_url: str) -> requests.Response:
             if response.status_code in {429, 503} and attempt < attempts - 1:
                 base = 2 ** (attempt + 1)
                 sleep_s = base + random.uniform(0, 1)
-                retry_after = response.headers.get("Retry-After")
+                retry_after = _header_get(response, "Retry-After")
                 if retry_after is not None:
                     try:
                         retry_after_s = float(retry_after)
@@ -330,7 +339,7 @@ def fetch_source_payload(url: str) -> dict:
     """Fetch source content and return text plus extraction metadata."""
     safe_url = normalize_and_validate_public_url(url, context="scraper")
     response = _fetch_with_retries(safe_url)
-    content_type = (response.headers.get("Content-Type") or "").lower()
+    content_type = _header_get(response, "Content-Type").lower()
 
     is_pdf = safe_url.lower().endswith(".pdf") or "application/pdf" in content_type
     if is_pdf:

@@ -146,8 +146,12 @@ def generate_guide(
         logger.info("event=scrape_start source=%s ref=%s", name, source_ref)
         try:
             payload = scraper.fetch_source_payload_from_source(src)
+            if not isinstance(payload, dict):
+                raise ValueError(f"Scraper returned invalid payload type: {type(payload).__name__}")
             text = payload.get("text", "")
-            metadata = payload.get("metadata", {})
+            metadata = payload.get("metadata") or {}
+            if not isinstance(metadata, dict):
+                metadata = {}
             source_method = str(metadata.get("extraction_method", "")).strip().lower()
             scraped_sources.append((name, source_ref, text, source_method))
         except Exception as exc:
