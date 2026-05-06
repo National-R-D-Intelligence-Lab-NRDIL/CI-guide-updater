@@ -8,6 +8,7 @@ enforcing guardrails:
 """
 
 import json
+import logging
 import re
 from typing import Optional
 from urllib.parse import quote
@@ -15,6 +16,8 @@ from urllib.parse import quote
 from src.utils.llm_client import get_default_model, get_llm_client
 from src.utils.sensitive_data import enforce_sensitive_data_policy
 from src.utils.source_policy import assert_public_sources
+
+logger = logging.getLogger(__name__)
 
 
 def _tokenize(text: str) -> set[str]:
@@ -228,7 +231,8 @@ def add_citations(
     """
     try:
         client = get_llm_client()
-    except EnvironmentError:
+    except EnvironmentError as exc:
+        logger.warning("event=citation_skipped reason=llm_client_unavailable error=%s", exc)
         return guide_md, []
     if model_name is None:
         model_name = get_default_model()
@@ -247,10 +251,28 @@ def add_citations(
             source_url_map[name] = ref
     source_metadata_by_name = source_metadata_by_name or {}
     if not source_url_map:
+        logger.warning("event=citation_skipped reason=no_source_urls source_count=%d", len(sources))
+        return guide_md, []
+
+    snapshots_by_name = snapshots_by_name or {}
+    snapshot_chars = {
+        name: len(str(snapshots_by_name.get(name, "")) or "")
+        for name in source_url_map
+    }
+    empty_snapshots = [name for name, n in snapshot_chars.items() if n == 0]
+    if empty_snapshots:
+        logger.warning(
+            "event=citation_snapshot_empty count=%d names=%s",
+            len(empty_snapshots),
+            ",".join(empty_snapshots[:5]),
+        )
+    if all(n == 0 for n in snapshot_chars.values()):
+        logger.warning("event=citation_skipped reason=all_snapshots_empty")
         return guide_md, []
 
     claims = _extract_claim_lines(guide_md)
     if not claims:
+        logger.warning("event=citation_skipped reason=no_claims_extracted guide_chars=%d", len(guide_md))
         return guide_md, []
 
     source_names = list(source_url_map.keys())
@@ -287,10 +309,19 @@ def add_citations(
     cleaned = _clean_model_json(raw)
     try:
         proposed = json.loads(cleaned)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        logger.warning(
+            "event=citation_skipped reason=invalid_json error=%s preview=%r",
+            exc,
+            cleaned[:200],
+        )
         return guide_md, []
 
     if not isinstance(proposed, list):
+        logger.warning(
+            "event=citation_skipped reason=non_list_response type=%s",
+            type(proposed).__name__,
+        )
         return guide_md, []
 
     claim_map = {f"L{idx}": text for idx, text in claims}
@@ -366,6 +397,13 @@ def add_citations(
         )
 
     if not accepted:
+        logger.warning(
+            "event=citation_skipped reason=no_overlap_above_threshold "
+            "claim_count=%d source_count=%d min_overlap=%.3f",
+            len(claims),
+            len(source_url_map),
+            min_overlap,
+        )
         return guide_md, []
 
     lines = guide_md.splitlines()

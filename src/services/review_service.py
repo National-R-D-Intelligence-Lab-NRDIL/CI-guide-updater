@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from io import BytesIO
 from datetime import datetime, timezone
@@ -11,6 +12,8 @@ from typing import Any
 
 import generator
 import review
+
+logger = logging.getLogger(__name__)
 from src.services.persistence_service import (
     hydrate_program,
     list_program_slugs as list_persisted_program_slugs,
@@ -785,19 +788,74 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
 
         evidence: list[dict] = []
         citation_count = 0
+        citation_warnings: list[str] = []
+        snapshot_failures: list[dict[str, str]] = []
+        if not with_citations:
+            citation_warnings.append("Citation generation was disabled for this run.")
         if with_citations:
             assert_public_sources(sources, context="review citation step")
             snapshot_map: dict[str, str] = {}
             source_metadata_map: dict[str, dict] = {}
             for src in sources:
+                src_name = str(src.get("name", "")).strip()
+                src_url = str(src.get("url", "")).strip()
+                primary_error: Exception | None = None
+                text = ""
+                metadata: dict[str, Any] = {}
                 try:
                     payload = scraper.fetch_source_payload_from_source(src)
-                    snapshot_map[src["name"]] = payload.get("text", "")
-                    meta = payload.get("metadata", {})
-                    source_metadata_map[src["name"]] = meta if isinstance(meta, dict) else {}
-                except Exception:
-                    snapshot_map[src["name"]] = ""
-                    source_metadata_map[src["name"]] = {}
+                    if isinstance(payload, dict):
+                        text = str(payload.get("text", "") or "")
+                        meta = payload.get("metadata", {})
+                        metadata = meta if isinstance(meta, dict) else {}
+                except Exception as exc:
+                    primary_error = exc
+                    logger.warning(
+                        "event=citation_snapshot_failed source=%s error=%s",
+                        src_name,
+                        exc,
+                    )
+
+                if not text and src_url:
+                    try:
+                        text = generator._best_effort_fetch_text(src_url)
+                        if text:
+                            metadata = metadata or {"extraction_method": "html_fallback"}
+                            logger.info(
+                                "event=citation_snapshot_fallback_ok source=%s chars=%d",
+                                src_name,
+                                len(text),
+                            )
+                    except Exception as fallback_exc:
+                        logger.warning(
+                            "event=citation_snapshot_fallback_failed source=%s error=%s",
+                            src_name,
+                            fallback_exc,
+                        )
+                        if primary_error is None:
+                            primary_error = fallback_exc
+
+                snapshot_map[src_name] = text
+                source_metadata_map[src_name] = metadata
+                if not text:
+                    snapshot_failures.append(
+                        {
+                            "name": src_name,
+                            "ref": src_url or str(src.get("file_path", "")).strip(),
+                            "error": (
+                                f"{type(primary_error).__name__}: {primary_error}"
+                                if primary_error
+                                else "empty snapshot"
+                            ),
+                        }
+                    )
+
+            if snapshot_failures:
+                citation_warnings.append(
+                    f"{len(snapshot_failures)} of {len(sources)} sources had no snapshot text "
+                    "available for citation evidence."
+                )
+
             try:
                 cited_md, evidence = cite.add_citations(
                     guide_md,
@@ -808,10 +866,18 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
                 if evidence:
                     guide_md = cited_md
                     citation_count = len(evidence)
+                else:
+                    citation_warnings.append(
+                        "Citation step completed but produced no accepted citations."
+                        " Check Streamlit logs for `event=citation_skipped` for the reason."
+                    )
             except SensitiveDataError:
                 raise
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("event=citation_step_failed error=%s", exc)
+                citation_warnings.append(
+                    f"Citation step failed: {type(exc).__name__}: {exc}"
+                )
 
         review_dir = _review_dir(slug)
         review_dir.mkdir(parents=True, exist_ok=True)
@@ -838,6 +904,8 @@ def generate_first_draft(slug: str, with_citations: bool = True) -> dict[str, An
             "draft_path": str(draft_path),
             "draft_chars": len(guide_md),
             "citation_count": citation_count,
+            "citation_warnings": citation_warnings,
+            "snapshot_failures": snapshot_failures,
             "output_dir": str(output_dir),
             "storage": storage,
         }

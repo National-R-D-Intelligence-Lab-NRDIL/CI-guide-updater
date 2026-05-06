@@ -456,6 +456,26 @@ if st.button("Generate First Draft", use_container_width=True):
         st.caption(f"Draft size: {draft_result['draft_chars']} characters")
         if draft_result.get("output_dir"):
             st.caption(f"Output files: `{draft_result['output_dir']}`")
+
+        citation_warnings = draft_result.get("citation_warnings") or []
+        snapshot_failures = draft_result.get("snapshot_failures") or []
+        if citation_count == 0 and draft_citations:
+            st.warning(
+                "No citations were added to this draft. See details below to fix snapshots or thresholds."
+            )
+        for warning_msg in citation_warnings:
+            st.warning(warning_msg)
+        if snapshot_failures:
+            with st.expander(
+                f"Snapshot failures for citation evidence ({len(snapshot_failures)})",
+                expanded=False,
+            ):
+                for failure in snapshot_failures:
+                    name = failure.get("name", "")
+                    ref = failure.get("ref", "")
+                    err = failure.get("error", "")
+                    st.write(f"- **{name}** ({ref}): {err}")
+
         st.page_link("pages/4_Outputs.py", label="Go to View Outputs to preview and download")
         render_storage_status(draft_result.get("storage"))
     else:
