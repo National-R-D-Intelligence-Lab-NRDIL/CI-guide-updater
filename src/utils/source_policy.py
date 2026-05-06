@@ -27,6 +27,11 @@ def _load_foundation_allowlist() -> frozenset[str]:
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Invalid trusted domains config JSON: {exc}") from exc
 
+    if not isinstance(payload, dict):
+        raise RuntimeError(
+            "Invalid trusted domains config: top-level JSON object is required."
+        )
+
     domains = payload.get("foundation_domains")
     if not isinstance(domains, list):
         raise RuntimeError("Invalid trusted domains config: 'foundation_domains' must be a list")

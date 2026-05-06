@@ -157,7 +157,7 @@ def generate_guide(
         except Exception as exc:
             logger.warning("event=scrape_failed source=%s error=%s", name, exc)
             label = source_ref or name or "<unknown source>"
-            scrape_failures.append(f"{label}: {exc}")
+            scrape_failures.append(f"{label}: {type(exc).__name__}: {exc}")
 
     if not scraped_sources:
         detail = "; ".join(scrape_failures[:5]).strip()
