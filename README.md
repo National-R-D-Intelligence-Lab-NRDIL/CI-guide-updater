@@ -1,12 +1,16 @@
 # CI Sponsor Guide Tool
 
-CI Sponsor Guide Tool helps teams discover, review, and keep grant sponsor guides current. It monitors official funding websites, detects changes, and regenerates guide output with citation support using Google Gemini.
+CI Sponsor Guide Tool helps teams discover, review, and keep grant sponsor guides current. It monitors official funding websites, detects changes, and regenerates guide output with citation support.
+
+The tool ships configured for **Google Gemini** out of the box, but the chat-completions step also works with any **OpenAI-compatible** provider (OpenAI, Anthropic via a bridge, or self-hosted endpoints) — set `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` in `.env`. Source discovery still requires a Gemini key because it uses Google Search grounding.
 
 It is designed for non-developers to use in day-to-day work, while still staying fully scriptable from the command line.
 
 It also includes:
 - a dedicated Streamlit Program Dashboard page for browsing and selecting workspaces, and
 - `internal_pipeline.py`, a template-only pipeline for internal data that must never be sent to an external LLM.
+
+> Looking for the technical deep-dive (module-by-module flow, content-zone hashing, weekly-update diff logic, citation guardrails, evidence schema)? See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The README focuses on operating the tool; the architecture doc focuses on how it works.
 
 ## What It Does
 
@@ -48,19 +52,27 @@ pip3 install -r requirements.txt
 
 On macOS, use `python3` and `pip3`. A bare `python` command is often not available unless you are inside a virtual environment.
 
-### 2. Add your Gemini API key
+### 2. Add your API key(s)
 
 ```bash
 cp .env.example .env
 ```
 
-Then edit `.env` and add:
+Then edit `.env`. You will likely want both keys, even though they often have the same value:
 
 ```env
+# Preferred key for chat completions (generation, weekly update, citation, section classification).
+# Works with any OpenAI-compatible endpoint (Gemini default, OpenAI, Anthropic-via-bridge, etc.).
+LLM_API_KEY=your-key-here
+
+# Required for source discovery (uses Gemini's native Google Search grounding).
+# If you are using Gemini for everything, this is the same key as LLM_API_KEY.
 GEMINI_API_KEY=your-gemini-api-key-here
 ```
 
-You can get a key from [Google AI Studio](https://aistudio.google.com/apikey).
+If you only set `GEMINI_API_KEY`, the tool will fall back to it for chat completions too — that's fine for default Gemini setups. But if you want to point chat completions at OpenAI, Anthropic, or another provider, set `LLM_API_KEY` (plus `LLM_BASE_URL` and `LLM_MODEL`) and keep `GEMINI_API_KEY` for discovery.
+
+You can get a Gemini key from [Google AI Studio](https://aistudio.google.com/apikey).
 
 ### 3. Launch the UI or use the CLI
 
@@ -78,12 +90,13 @@ Available pages:
 
 | Step | Page | What it does |
 | --- | --- | --- |
-| Dashboard | Program Dashboard | Browse/search all `programs/<slug>/` workspaces and select the current program |
+| Dashboard | Program Dashboard | Browse/search all `programs/<slug>/` workspaces; click a program to open its output preview |
 | 1 | Create New Program | Discover candidate source pages for a new grant program or funding topic |
 | 2 | Review & Generate | Approve sources, generate the first draft with citations, and get output files |
-| 3 | View Outputs | Preview the guide and download `.md` / `.docx` / `.pdf` immediately |
-| 4 | Weekly Update | Refresh an existing guide when sponsor pages change, with an update banner and red changed-text highlights |
+| 3 | Weekly Update | Refresh an existing guide when sponsor pages change, with an update banner and red changed-text highlights |
+| 4 | Outputs | Preview the guide and download `.md` / `.docx` / `.pdf` immediately |
 | 5 | Audit Evidence | Trace diffs, citations, and evidence back to source pages |
+| — | Output Preview | Focused markdown preview opened from the dashboard (not in the main nav) |
 
 The Streamlit home page includes an **Open Program Dashboard** button plus a program count. Open the Program Dashboard page to browse/search workspaces and click a program to make it the current selection for the rest of the workflow.
 
@@ -137,22 +150,21 @@ The result is stored in a program folder like:
 
 ```text
 programs/nsf_career_award/
-├── sources.json
-├── guide.md
+├── sources.json              # Approved sources (committed)
+├── guide.md                  # Baseline first-draft guide (committed)
+├── state.json                # Per-source content hashes (runtime, not committed)
+├── data/                     # Scraped text snapshots + extraction metadata (runtime)
 ├── output/
 │   ├── sponsor_guide_updated.md
 │   ├── sponsor_guide_updated.docx
 │   ├── sponsor_guide_updated.pdf
-│   ├── sponsor_guide_updated_YYYYMMDD_HHMMSS.md
-│   ├── sponsor_guide_updated_YYYYMMDD_HHMMSS.docx
-│   ├── sponsor_guide_updated_YYYYMMDD_HHMMSS.pdf
 │   └── sponsor_guide_evidence.json
 └── review/
     ├── sources_pending.json
     └── draft_guide.md
 ```
 
-The `output/` directory is populated as soon as you generate the first draft.
+The `output/` directory is populated as soon as you generate the first draft. Timestamped history copies (`*_YYYYMMDD_HHMMSS.*`) are added from the first weekly update onwards.
 
 ### Review sources interactively
 
@@ -246,8 +258,8 @@ What happens during a run:
 1. Every source URL is scraped again.
 2. Content-zone hashing compares the new page against the last snapshot (ignores nav/footer/cookie/banner noise). If the content zone changed, the pipeline proceeds to compute diffs and refresh the guide.
 3. The guide input is the previous generated guide, not always the original first baseline.
-4. If anything changed, the diff is sent to Gemini.
-5. Gemini rewrites only the affected sections.
+4. If anything changed, the diff is sent to the configured LLM (Gemini by default).
+5. The LLM rewrites only the affected sections.
 6. A **Weekly Update** banner is added to the top of the guide with the most important detected changes.
 7. Main-text lines changed since the previous guide are highlighted in red in the markdown preview and generated outputs.
 8. Updated artifacts are written to `programs/<slug>/output/`.
@@ -259,24 +271,29 @@ The pipeline can also write an evidence file at `programs/<slug>/output/sponsor_
 Citations are added during both the first draft generation and weekly updates. They are enabled by default. Useful CLI flags for the weekly pipeline:
 
 ```bash
-python3 pipeline.py programs/<slug>/guide.md \
+# Disable citations for this run
+python3 pipeline.py programs/<slug>/output/sponsor_guide_updated.md \
   --sources programs/<slug>/sources.json \
   --no-citations
 ```
 
 ```bash
-python3 pipeline.py programs/<slug>/guide.md \
+# Refresh citations even when no source pages changed
+python3 pipeline.py programs/<slug>/output/sponsor_guide_updated.md \
   --sources programs/<slug>/sources.json \
   --refresh-citations
 ```
 
 ```bash
-python3 pipeline.py programs/<slug>/guide.md \
+# Skip scrape/diff/update — only regenerate citations from existing snapshots
+python3 pipeline.py programs/<slug>/output/sponsor_guide_updated.md \
   --sources programs/<slug>/sources.json \
   --refresh-citations-only
 ```
 
-The citation layer is guarded so it only uses approved source names and checks the generated references against the scraped text. If no website changes are found, the pipeline exits without overwriting the guide.
+The citation layer is guarded so it only uses approved source names and validates every proposed claim-to-source mapping against scraped text using a lexical-overlap check (default threshold 6%). If no website changes are found and `--refresh-citations` is not set, the pipeline exits without overwriting the guide.
+
+For a detailed explanation of how citations are generated, the evidence schema, and how the audit trail works, see the [Audit log section in ARCHITECTURE.md](docs/ARCHITECTURE.md#5-audit-log-diffs-citations-and-evidence).
 
 ### Private data guardrail
 
@@ -309,13 +326,13 @@ LLM_LOCAL_MODE=false         # set true for a local-only model workflow
 
 If you have internal/confidential data that must never be sent to an external LLM, use `internal_pipeline.py`.
 
-This pipeline performs template substitution locally and writes a standalone markdown supplement:
+This pipeline performs template substitution locally and writes a standalone markdown supplement (`sponsor_guide_internal_supplement.md`):
 
 ```bash
 python3 internal_pipeline.py \
   --sources internal_sources.json \
   --guide programs/<slug>/guide.md \
-  --output output_internal
+  --output programs/<slug>/output_internal
 ```
 
 Example `internal_sources.json`:
@@ -363,30 +380,54 @@ Automated CI runs `python -m pytest tests/` on every push to `main` and on pull 
 
 ```text
 CI-sponsor-guide-updater/
-├── bootstrap.py
-├── pipeline.py
-├── cite.py
-├── scraper.py
-├── differ.py
-├── updater.py
-├── discover.py
-├── generator.py
-├── review.py
-├── review_async.py
-├── collect_review.py
-├── notify_review.py
-├── program_utils.py
+├── bootstrap.py              # CLI: one-time setup (discover → generate → review → finalize)
+├── pipeline.py               # CLI: weekly update (scrape → diff → LLM update → citations → export)
+├── cite.py                   # Citation mapping + evidence generation
+├── scraper.py                # Fetch + clean sources (HTML + PDF + OCR fallback)
+├── differ.py                 # Structured diff between text snapshots
+├── updater.py                # Targeted LLM guide rewrite
+├── generator.py              # First-draft guide generation
+├── weekly_update.py          # Weekly banner + red-highlight markup (no LLM)
+├── discover.py               # Source discovery via Gemini grounded search
+├── internal_pipeline.py      # Template-only pipeline for confidential data (no LLM)
+├── review.py                 # Synchronous interactive review (CLI)
+├── review_async.py           # Async shared-folder review packaging
+├── collect_review.py         # Pull async review approval back to workspace
+├── notify_review.py          # Webhook notification for async review
+├── program_utils.py          # Slug / path helpers
+├── app/
+│   ├── main.py               # Streamlit entry point
+│   ├── pages/                 # Streamlit workflow pages (0–6)
+│   ├── components/            # Shared UI components (shell, forms, tables, preview, status)
+│   └── state/session.py       # Streamlit session state helpers
+├── src/
+│   ├── services/
+│   │   ├── audit_service.py         # Audit evidence data loader
+│   │   ├── bootstrap_service.py     # UI bootstrap orchestration
+│   │   ├── output_service.py        # Output listing for the Outputs page
+│   │   ├── persistence_service.py   # Local + GitHub runtime storage
+│   │   ├── pipeline_service.py      # UI weekly-update orchestration
+│   │   └── review_service.py        # UI review + first-draft orchestration
+│   ├── exporters/
+│   │   ├── docx_export.py           # Markdown → .docx
+│   │   └── pdf_export.py            # Markdown → .pdf (supports red highlight spans)
+│   └── utils/
+│       ├── llm_client.py            # OpenAI-compatible client factory
+│       ├── source_policy.py         # URL allowlist, assert_public_sources, prompt sanitizer
+│       ├── sensitive_data.py        # Pre-LLM private-data scan
+│       ├── secrets.py               # Environment / Streamlit secret reader
+│       ├── validation.py            # Input validation helpers
+│       ├── logging_utils.py         # Rotating file logging setup
+│       └── errors.py               # Shared error formatting
+├── config/
+│   └── trusted_domains.json         # Foundation / .org host allowlist
+├── docs/
+│   └── ARCHITECTURE.md              # Detailed architecture + audit-log documentation
+├── tests/                           # pytest test suite
+├── programs/                        # Per-program workspaces (see programs/README.md)
 ├── requirements.txt
-├── .env.example
-└── programs/
-    └── <program-slug>/
-        ├── sources.json
-        ├── guide.md or *.docx
-        ├── output/
-        ├── state.json
-        ├── data/
-        ├── review/
-        └── review_packages/
+├── setup.py
+└── .env.example
 ```
 
 `programs/README.md` explains which files are committed and which ones are runtime-only.
@@ -438,7 +479,7 @@ OCR_ENDPOINT=
 OCR_API_KEY=
 ```
 
-If OCR is configured, it is used only when local PDF extraction cannot produce usable text.
+If OCR is configured, it is used only when local PDF extraction cannot produce usable text. The expected OCR response is a JSON object with a `text` field: `{"text": "...extracted page text..."}`.
 
 In **Review & Generate**, users can now add either:
 
@@ -497,17 +538,38 @@ After a weekly update with detected source changes, the updated guide includes a
 
 The Streamlit Outputs page reads from this directory and lets you preview or download the latest and timestamped historical files. If no output directory exists yet, it falls back to showing the draft or baseline guide.
 
+## Deploying to Streamlit Cloud
+
+1. **Set the app entrypoint** to `app/main.py` and install dependencies from `requirements.txt`.
+2. **Add secrets** under **App settings > Secrets**:
+   - `GEMINI_API_KEY` — required for source discovery.
+   - `LLM_API_KEY` — required for chat completions (can be the same Gemini key, or an OpenAI / Anthropic bridge key).
+3. **Enable durable runtime storage** (optional but recommended):
+   - Create a separate GitHub repository for runtime artifacts (e.g. `your-org/ci-sponsor-guide-runtime`).
+   - Add these secrets:
+
+```env
+RUNTIME_STORAGE_BACKEND=github
+RUNTIME_STORAGE_GITHUB_REPO=your-org/ci-sponsor-guide-runtime
+RUNTIME_STORAGE_GITHUB_TOKEN=ghp_your-personal-access-token
+RUNTIME_STORAGE_GITHUB_BRANCH=runtime-data
+RUNTIME_STORAGE_GITHUB_PREFIX=runtime/programs
+```
+
+   Without durable persistence, `programs/<slug>/` artifacts are lost on every Streamlit Cloud cold restart.
+4. **Redeploy**. The app will auto-create the runtime branch if it doesn't exist.
+
 ## Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
 | `zsh: command not found: python` | Use `python3` instead |
-| `GEMINI_API_KEY is not set` | Confirm `.env` exists in the project root and contains the key |
+| `GEMINI_API_KEY is not set` | Confirm `.env` exists in the project root and contains the key. For chat completions you can also use `LLM_API_KEY`. |
 | `.env` exists but the key is not loading | Re-copy from `.env.example` and check that the file is not empty |
 | `ModuleNotFoundError` | Make sure you installed `requirements.txt` and kept `setup.py` plus `-e .` in place |
 | `No module named 'app'` on Streamlit Cloud | Set the app entrypoint to `app/main.py` and redeploy after installing dependencies |
 | `No module named 'pypdf'` or `No module named 'fitz'` | Install dependencies from `requirements.txt`; `fitz` support requires installing `pymupdf` |
-| `GEMINI_API_KEY is not set` in Streamlit Cloud | Add the key under **App settings > Secrets** so the deployed app can read it |
+| `GEMINI_API_KEY is not set` in Streamlit Cloud | Add the key under **App settings > Secrets**; also set `LLM_API_KEY` if using a non-Gemini provider |
 | Remote persistence says sync failed | Check `RUNTIME_STORAGE_*` secrets, token scopes, repository name, and repository write access |
 | `Unable to read repository metadata: 404` | The runtime repo name is wrong or the token cannot access that repo |
 | Files disappear after Cloud restart | Enable GitHub runtime persistence or move artifacts to durable external storage |
