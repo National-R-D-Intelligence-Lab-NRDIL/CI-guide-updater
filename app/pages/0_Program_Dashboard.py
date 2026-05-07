@@ -13,6 +13,7 @@ bootstrap()
 
 import streamlit as st
 
+from app.components.preview import markdown_preview
 from app.components.shell import apply_app_chrome, render_page_header, render_sidebar
 from app.state.session import init_session_state
 from src.services.review_service import get_program_display_name, list_program_records
@@ -76,6 +77,17 @@ def _load_program_status(slug: str) -> dict:
     return status
 
 
+def _load_output_markdown_preview(slug: str) -> str:
+    """Read latest output markdown for dashboard preview."""
+    output_md = Path("programs") / slug / "output" / "sponsor_guide_updated.md"
+    if not output_md.exists():
+        return ""
+    try:
+        return output_md.read_text(encoding="utf-8")
+    except Exception:
+        return ""
+
+
 st.set_page_config(page_title="Program Dashboard", layout="wide")
 init_session_state()
 apply_app_chrome()
@@ -135,6 +147,8 @@ for prog in page_programs:
     if cols[0].button(prog["display_name"], key=f"select_{prog['slug']}", use_container_width=True):
         st.session_state["selected_program_slug"] = prog["slug"]
         st.session_state["selected_program_name"] = prog["display_name"]
+        st.session_state["dashboard_preview_slug"] = prog["slug"]
+        st.session_state["dashboard_preview_name"] = prog["display_name"]
         st.rerun()
     cols[1].write(str(prog["source_count"]))
     cols[2].write("Yes" if prog["has_guide"] else "—")
@@ -165,3 +179,17 @@ if selected_slug:
         selected_name = get_program_display_name(selected_slug)
     st.success(f"Selected program: **{selected_name}**")
     st.page_link("pages/2_Review_Sources.py", label="Continue to Review Sources →")
+
+preview_slug = str(st.session_state.get("dashboard_preview_slug", "")).strip()
+if preview_slug:
+    st.markdown("---")
+    preview_name = str(st.session_state.get("dashboard_preview_name", "")).strip()
+    if not preview_name:
+        preview_name = get_program_display_name(preview_slug)
+    st.markdown(f"### Output preview: {preview_name}")
+    preview_markdown = _load_output_markdown_preview(preview_slug)
+    if preview_markdown:
+        markdown_preview(preview_markdown, title="Latest output markdown")
+        st.page_link("pages/4_Outputs.py", label="Open full output details →")
+    else:
+        st.info("No generated output markdown found yet for this program.")
